@@ -1,0 +1,18 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Node
+frontend/node_modules/
+dist/
+
+# SQLite database
+backend/retailflow.db
+
+# Environment files
+.env
+*.log
+
+# macOS junk
+.DS_Store
