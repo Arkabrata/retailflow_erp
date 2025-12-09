@@ -801,3 +801,62 @@ body {
   font-size: 13px;
   color: #4b5563;
 }
+.rf-tagged-skus {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.rf-sku-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #312e81;
+  font-size: 11px;
+}
+
+.rf-sku-tag-remove {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  color: #6b7280;
+}
+
+.rf-sku-tag-remove:hover {
+  color: #111827;
+}
+
+.rf-sku-select {
+  margin-top: 2px;
+}
+
+/* Print: show only the PO area nicely */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .rf-po-print-area,
+  .rf-po-print-area * {
+    visibility: visible;
+  }
+
+  .rf-po-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    box-shadow: none;
+  }
+
+  /* optional: hide Saved POs table in print */
+  .rf-page > div:last-child {
+    display: none !important;
+  }
+}

@@ -1,6 +1,10 @@
+
 // src/App.jsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import axios from "axios";
 import "./App.css";
+
+const API_BASE = "http://127.0.0.1:8000/api";
 
 function App() {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -322,78 +326,130 @@ function App() {
   );
 }
 
-/* ===================== Item Master Page ===================== */
+/* ===================== Item Master Page =====================*/
 
 function ItemMasterPage() {
-  // In real app, this will come from HSN Master API / DB
-  const hsnOptions = [
-    { code: "6105", description: "Men's cotton shirts" },
-    { code: "6109", description: "T-shirts, singlets and vests" },
-    { code: "6203", description: "Men's suits, jackets, trousers" },
-  ];
+  const [items, setItems] = useState([]);
+  const [hsnList, setHsnList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState(null);
+  const [error, setError] = useState("");
 
-  const [items, setItems] = useState([
-    {
-      id: 1,
-      sku: "RR-SHIRT-001",
-      brand: "Rare Rabbit",
-      division: "Menswear",
-      category: "Shirts",
-      subCategory: "Casual",
-      style: "Slim Fit",
-      color: "Navy",
-      size: "M",
-      hsnCode: "6105",   // NEW: linked to HSN
-      imageFile: null,
-      imagePreview: "",
-      status: "Published",
-    },
-  ]);
+  // ---- Load items + HSN from backend on mount ----
+  useEffect(() => {
+    async function load() {
+      try {
+        setLoading(true);
+        const [itemsRes, hsnRes] = await Promise.all([
+          axios.get(`${API_BASE}/items`),
+          axios.get(`${API_BASE}/hsn`),
+        ]);
+        setItems(itemsRes.data);
+        setHsnList(hsnRes.data);
+        setError("");
+      } catch (err) {
+        console.error("Error loading Item Master:", err);
+        setError("Failed to load Item Master data");
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
 
-  const handleAddRow = () => {
-    setItems((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        sku: "",
+  // ---- Add Row → create item in DB ----
+  const handleAddRow = async () => {
+    const sku = window.prompt("Enter new SKU code");
+    if (!sku || !sku.trim()) return;
+
+    try {
+      const payload = {
+        sku_code: sku.trim(),
         brand: "",
         division: "",
         category: "",
-        subCategory: "",
+        sub_category: "",
         style: "",
         color: "",
         size: "",
-        hsnCode: "",      // NEW FIELD
-        imageFile: null,
-        imagePreview: "",
-        status: "Draft",
-      },
-    ]);
+        hsn_code: "",
+        status: "DRAFT",
+        image_path: null,
+      };
+
+      const res = await axios.post(`${API_BASE}/items`, payload);
+      setItems((prev) => [...prev, res.data]);
+    } catch (err) {
+      console.error("Error creating item:", err);
+      alert(
+        err.response?.data?.detail || "Failed to create item. Check console."
+      );
+    }
   };
 
-  const updateField = (index, field, value) => {
-    setItems((prev) => {
-      const copy = [...prev];
-      copy[index] = { ...copy[index], [field]: value };
-      return copy;
-    });
+  // ---- Inline editing: local state change ----
+  const handleFieldChange = (itemId, field, value) => {
+    setItems((prev) =>
+      prev.map((it) => (it.id === itemId ? { ...it, [field]: value } : it))
+    );
   };
 
-  const handleImageChange = (index, event) => {
-    const file = event.target.files?.[0];
+  // ---- Save one row (PUT to backend) ----
+  const handleSaveItem = async (item) => {
+    try {
+      setSavingId(item.id);
+      const payload = {
+        sku_code: item.sku_code.trim(),
+        brand: item.brand || "",
+        division: item.division || "",
+        category: item.category || "",
+        sub_category: item.sub_category || "",
+        style: item.style || "",
+        color: item.color || "",
+        size: item.size || "",
+        hsn_code: item.hsn_code || "",
+        status: item.status || "DRAFT",
+        image_path: item.image_path || null,
+      };
+      await axios.put(`${API_BASE}/items/${item.id}`, payload);
+    } catch (err) {
+      console.error("Error saving item:", err);
+      alert("Failed to save item");
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  // ---- Delete row ----
+  const handleDeleteItem = async (itemId) => {
+    const ok = window.confirm("Delete this item?");
+    if (!ok) return;
+
+    try {
+      await axios.delete(`${API_BASE}/items/${itemId}`);
+      setItems((prev) => prev.filter((it) => it.id !== itemId));
+    } catch (err) {
+      console.error("Error deleting item:", err);
+      alert("Failed to delete item");
+    }
+  };
+
+  // ---- Image upload (front-end only; store file name in DB) ----
+  const handleImageChange = (itemId, file) => {
     if (!file) return;
 
+    const fileName = file.name;
+
+    // Only storing file name in DB for now, preview via object URL
     const previewUrl = URL.createObjectURL(file);
 
-    setItems((prev) => {
-      const copy = [...prev];
-      copy[index] = {
-        ...copy[index],
-        imageFile: file,
-        imagePreview: previewUrl,
-      };
-      return copy;
-    });
+    setItems((prev) =>
+      prev.map((it) =>
+        it.id === itemId
+          ? { ...it, image_path: fileName, _previewUrl: previewUrl }
+          : it
+      )
+    );
   };
 
   return (
@@ -402,8 +458,8 @@ function ItemMasterPage() {
         <h2>Item Master</h2>
         <p>
           Maintain SKU-level details (Brand, Division, Category, Sub Category,
-          Style, Color, Size, HSN, Image). Only items with status &quot;Published&quot; 
-          will later be used for POS billing.
+          Style, Color, Size, HSN, Image). Only items with status
+          <strong> Published</strong> will later be used for POS billing.
         </p>
       </div>
 
@@ -419,197 +475,274 @@ function ItemMasterPage() {
           </button>
         </div>
 
-        <div className="rf-table-wrapper">
-          <table className="rf-table rf-table-items">
-            <thead>
-              <tr>
-                <th>Image</th>
-                <th>SKU</th>
-                <th>Brand</th>
-                <th>Division</th>
-                <th>Category</th>
-                <th>Sub Category</th>
-                <th>Style</th>
-                <th>Color</th>
-                <th>Size</th>
-                <th>HSN</th>      {/* NEW COLUMN */}
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((it, index) => (
-                <tr key={it.id}>
-                  {/* Image upload */}
-                  <td>
-                    <label className="rf-upload-thumb">
-                      {it.imagePreview ? (
-                        <img
-                          src={it.imagePreview}
-                          alt={it.sku || "item"}
-                          className="rf-item-image"
-                        />
-                      ) : (
-                        <span className="rf-upload-placeholder">Upload</span>
-                      )}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => handleImageChange(index, e)}
-                      />
-                    </label>
-                  </td>
-
-                  {/* Editable text cells */}
-                  <td>
-                    <input
-                      className="rf-cell-input"
-                      value={it.sku}
-                      onChange={(e) => updateField(index, "sku", e.target.value)}
-                      placeholder="RR-SHIRT-001"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="rf-cell-input"
-                      value={it.brand}
-                      onChange={(e) =>
-                        updateField(index, "brand", e.target.value)
-                      }
-                      placeholder="Rare Rabbit"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="rf-cell-input"
-                      value={it.division}
-                      onChange={(e) =>
-                        updateField(index, "division", e.target.value)
-                      }
-                      placeholder="Menswear"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="rf-cell-input"
-                      value={it.category}
-                      onChange={(e) =>
-                        updateField(index, "category", e.target.value)
-                      }
-                      placeholder="Shirts"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="rf-cell-input"
-                      value={it.subCategory}
-                      onChange={(e) =>
-                        updateField(index, "subCategory", e.target.value)
-                      }
-                      placeholder="Casual"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="rf-cell-input"
-                      value={it.style}
-                      onChange={(e) =>
-                        updateField(index, "style", e.target.value)
-                      }
-                      placeholder="Slim Fit"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="rf-cell-input"
-                      value={it.color}
-                      onChange={(e) =>
-                        updateField(index, "color", e.target.value)
-                      }
-                      placeholder="Navy"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="rf-cell-input"
-                      value={it.size}
-                      onChange={(e) =>
-                        updateField(index, "size", e.target.value)
-                      }
-                      placeholder="M"
-                    />
-                  </td>
-
-                  {/* NEW: HSN dropdown */}
-                  <td>
-                    <select
-                      className="rf-cell-select"
-                      value={it.hsnCode}
-                      onChange={(e) =>
-                        updateField(index, "hsnCode", e.target.value)
-                      }
-                    >
-                      <option value="">Select HSN</option>
-                      {hsnOptions.map((opt) => (
-                        <option key={opt.code} value={opt.code}>
-                          {opt.code} – {opt.description}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-
-                  {/* Publish / Draft */}
-                  <td>
-                    <select
-                      className="rf-cell-select"
-                      value={it.status}
-                      onChange={(e) =>
-                        updateField(index, "status", e.target.value)
-                      }
-                    >
-                      <option value="Published">Published</option>
-                      <option value="Draft">Draft</option>
-                    </select>
-                  </td>
+        {loading ? (
+          <p style={{ fontSize: "13px", color: "#6b7280" }}>Loading...</p>
+        ) : (
+          <div className="rf-table-wrapper">
+            <table className="rf-table rf-table-items">
+              <thead>
+                <tr>
+                  <th>Image</th>
+                  <th>SKU</th>
+                  <th>Brand</th>
+                  <th>Division</th>
+                  <th>Category</th>
+                  <th>Sub Category</th>
+                  <th>Style</th>
+                  <th>Color</th>
+                  <th>Size</th>
+                  <th>HSN</th>
+                  <th>Status</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {items.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={12}
+                      style={{ fontSize: "13px", color: "#6b7280" }}
+                    >
+                      No items found. Click <strong>+ Add Row</strong> to create
+                      a SKU.
+                    </td>
+                  </tr>
+                )}
+
+                {items.map((item) => (
+                  <tr key={item.id}>
+                    {/* Image upload cell */}
+                    <td>
+                      <div className="rf-upload-thumb">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) =>
+                            handleImageChange(item.id, e.target.files?.[0])
+                          }
+                        />
+                        {item._previewUrl ? (
+                          <img
+                            src={item._previewUrl}
+                            alt="preview"
+                            className="rf-item-image"
+                          />
+                        ) : item.image_path ? (
+                          <span className="rf-upload-placeholder">
+                            {item.image_path}
+                          </span>
+                        ) : (
+                          <span className="rf-upload-placeholder">
+                            Upload
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Text fields */}
+                    <td>
+                      <input
+                        className="rf-cell-input"
+                        value={item.sku_code || ""}
+                        onChange={(e) =>
+                          handleFieldChange(
+                            item.id,
+                            "sku_code",
+                            e.target.value
+                          )
+                        }
+                      />
+                    </td>
+
+                    <td>
+                      <input
+                        className="rf-cell-input"
+                        value={item.brand || ""}
+                        onChange={(e) =>
+                          handleFieldChange(item.id, "brand", e.target.value)
+                        }
+                      />
+                    </td>
+
+                    <td>
+                      <input
+                        className="rf-cell-input"
+                        value={item.division || ""}
+                        onChange={(e) =>
+                          handleFieldChange(item.id, "division", e.target.value)
+                        }
+                      />
+                    </td>
+
+                    <td>
+                      <input
+                        className="rf-cell-input"
+                        value={item.category || ""}
+                        onChange={(e) =>
+                          handleFieldChange(item.id, "category", e.target.value)
+                        }
+                      />
+                    </td>
+
+                    <td>
+                      <input
+                        className="rf-cell-input"
+                        value={item.sub_category || ""}
+                        onChange={(e) =>
+                          handleFieldChange(
+                            item.id,
+                            "sub_category",
+                            e.target.value
+                          )
+                        }
+                      />
+                    </td>
+
+                    <td>
+                      <input
+                        className="rf-cell-input"
+                        value={item.style || ""}
+                        onChange={(e) =>
+                          handleFieldChange(item.id, "style", e.target.value)
+                        }
+                      />
+                    </td>
+
+                    <td>
+                      <input
+                        className="rf-cell-input"
+                        value={item.color || ""}
+                        onChange={(e) =>
+                          handleFieldChange(item.id, "color", e.target.value)
+                        }
+                      />
+                    </td>
+
+                    <td>
+                      <input
+                        className="rf-cell-input"
+                        value={item.size || ""}
+                        onChange={(e) =>
+                          handleFieldChange(item.id, "size", e.target.value)
+                        }
+                      />
+                    </td>
+
+                    {/* HSN dropdown */}
+                    <td>
+                      <select
+                        className="rf-cell-input"
+                        value={item.hsn_code || ""}
+                        onChange={(e) =>
+                          handleFieldChange(item.id, "hsn_code", e.target.value)
+                        }
+                      >
+                        <option value="">Select HSN</option>
+                        {hsnList.map((h) => (
+                          <option key={h.id} value={h.hsn_code}>
+                            {h.hsn_code} – {h.description}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+
+                    {/* Status dropdown */}
+                    <td>
+                      <select
+                        className="rf-cell-input"
+                        value={item.status || "DRAFT"}
+                        onChange={(e) =>
+                          handleFieldChange(item.id, "status", e.target.value)
+                        }
+                      >
+                        <option value="DRAFT">Draft</option>
+                        <option value="PUBLISHED">Published</option>
+                      </select>
+                    </td>
+
+                    {/* Actions */}
+                    <td>
+                      <button
+                        type="button"
+                        className="rf-text-button"
+                        onClick={() => handleSaveItem(item)}
+                        disabled={savingId === item.id}
+                        style={{ marginRight: "8px" }}
+                      >
+                        {savingId === item.id ? "Saving..." : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        className="rf-text-button"
+                        onClick={() => handleDeleteItem(item.id)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {error && (
+          <p style={{ fontSize: "12px", color: "#b91c1c", marginTop: "8px" }}>
+            {error}
+          </p>
+        )}
 
         <p className="rf-table-footnote">
-          Note: HSN is selected per SKU. When we build the PO module, tax (CGST,
-          SGST, IGST) will be picked from the HSN Master based on this value.
+          Note: HSN is selected per SKU. When we build the PO module later, tax
+          (CGST, SGST, IGST) will be picked from the HSN Master based on this
+          value. Items with status <strong>Published</strong> will be visible in
+          POS.
         </p>
       </div>
     </div>
   );
 }
 
-/* ===================== Retailer Profile Page ===================== */
+/* ===================== Retailer Profile Page =====================*/ 
+// --- Retailer Profile (front-end only, hard-coded) ---
+
+const INITIAL_RETAILER = {
+  name: "RetailFlow India Pvt Ltd",
+  address: "15 Karthik Nagar Main Road, Karthik Nagar",
+  city: "Bengaluru",
+  state: "Karnataka",
+  pincode: "560037",
+  gstin: "29ZAUPPC5667N1Z2",
+  pan: "ZAUPP5667N",
+  phone: "+91-8080808080",
+  email: "support@retailflow.in",
+};
 
 function RetailerProfilePage() {
-  const [retailer, setRetailer] = useState({
-    name: "",
-    address: "",
-    city: "",
-    state: "",
-    pincode: "",
-    pan: "",
-    gst: "",
-  });
+  const [form, setForm] = useState(INITIAL_RETAILER);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
 
-  const [saved, setSaved] = useState(false);
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setRetailer((prev) => ({ ...prev, [name]: value }));
-    setSaved(false);
+  const handleChange = (field) => (e) => {
+    setForm((prev) => ({
+      ...prev,
+      [field]: e.target.value,
+    }));
+    setMessage("");
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    // TODO: later send to backend
-    setSaved(true);
+  const handleSave = () => {
+    // No backend – just fake a save
+    setSaving(true);
+    setTimeout(() => {
+      setSaving(false);
+      setMessage("Retailer profile updated locally (not saved to server).");
+    }, 400);
+  };
+
+  const handleReset = () => {
+    setForm(INITIAL_RETAILER);
+    setMessage("Reset to default hard-coded profile.");
   };
 
   return (
@@ -617,44 +750,41 @@ function RetailerProfilePage() {
       <div className="rf-page-header">
         <h2>Retailer Profile</h2>
         <p>
-          Store details used on POS bills, exports, and reports. Fill once and
-          reuse across the system.
+          Store details used on POS bills, exports, and reports.
+          This profile is stored only in the browser (no backend).
         </p>
       </div>
 
       <div className="rf-card rf-card-wide">
-        {/* FORM */}
-        <form className="rf-form" onSubmit={handleSubmit}>
+        {/* Left: Form */}
+        <div className="rf-form">
+          <div className="rf-input-group rf-input-wide">
+            <label>Retailer / Store Name</label>
+            <input
+              type="text"
+              value={form.name}
+              onChange={handleChange("name")}
+              placeholder="Rare Rabbit - MG Road"
+            />
+          </div>
+
+          <div className="rf-input-group rf-input-wide">
+            <label>Address</label>
+            <textarea
+              rows={3}
+              value={form.address}
+              onChange={handleChange("address")}
+              placeholder="Door no, Street, Area"
+            />
+          </div>
+
           <div className="rf-form-grid">
-            <div className="rf-input-group rf-input-wide">
-              <label>Retailer / Store Name</label>
-              <input
-                type="text"
-                name="name"
-                value={retailer.name}
-                onChange={handleChange}
-                placeholder="Rare Rabbit - MG Road"
-              />
-            </div>
-
-            <div className="rf-input-group rf-input-wide">
-              <label>Address</label>
-              <textarea
-                name="address"
-                value={retailer.address}
-                onChange={handleChange}
-                rows={3}
-                placeholder="Door no, Street, Area"
-              />
-            </div>
-
             <div className="rf-input-group">
               <label>City</label>
               <input
                 type="text"
-                name="city"
-                value={retailer.city}
-                onChange={handleChange}
+                value={form.city}
+                onChange={handleChange("city")}
                 placeholder="Bengaluru"
               />
             </div>
@@ -663,9 +793,8 @@ function RetailerProfilePage() {
               <label>State</label>
               <input
                 type="text"
-                name="state"
-                value={retailer.state}
-                onChange={handleChange}
+                value={form.state}
+                onChange={handleChange("state")}
                 placeholder="Karnataka"
               />
             </div>
@@ -674,10 +803,29 @@ function RetailerProfilePage() {
               <label>Pincode</label>
               <input
                 type="text"
-                name="pincode"
-                value={retailer.pincode}
-                onChange={handleChange}
+                value={form.pincode}
+                onChange={handleChange("pincode")}
                 placeholder="560001"
+              />
+            </div>
+
+            <div className="rf-input-group">
+              <label>Phone</label>
+              <input
+                type="text"
+                value={form.phone}
+                onChange={handleChange("phone")}
+                placeholder="9089482829"
+              />
+            </div>
+
+            <div className="rf-input-group">
+              <label>Email</label>
+              <input
+                type="text"
+                value={form.email}
+                onChange={handleChange("email")}
+                placeholder="email@domain.com"
               />
             </div>
 
@@ -685,59 +833,70 @@ function RetailerProfilePage() {
               <label>PAN</label>
               <input
                 type="text"
-                name="pan"
-                value={retailer.pan}
-                onChange={handleChange}
+                value={form.pan}
+                onChange={handleChange("pan")}
                 placeholder="ABCDE1234F"
               />
             </div>
 
-            <div className="rf-input-group">
+            <div className="rf-input-group rf-input-wide">
               <label>GSTIN</label>
               <input
                 type="text"
-                name="gst"
-                value={retailer.gst}
-                onChange={handleChange}
+                value={form.gstin}
+                onChange={handleChange("gstin")}
                 placeholder="29ABCDE1234F1Z5"
               />
             </div>
           </div>
 
-          <div className="rf-form-actions">
-            <button type="submit" className="rf-primary-btn">
-              Save Retailer Profile
+          <div className="rf-form-actions" style={{ marginTop: 16 }}>
+            <button
+              type="button"
+              className="rf-primary-btn"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? "Saving..." : "Save Retailer Profile"}
             </button>
-            {saved && (
-              <span className="rf-save-msg">
-                Saved (current session only – backend to be added later).
-              </span>
-            )}
+            <button
+              type="button"
+              className="rf-primary-btn"
+              style={{ background: "#6b7280" }}
+              onClick={handleReset}
+            >
+              Reset to Default
+            </button>
+            {message && <span className="rf-save-msg">{message}</span>}
           </div>
-        </form>
+        </div>
 
-        {/* PREVIEW */}
+        {/* Right: Preview */}
         <div className="rf-summary-block">
           <h3>Preview</h3>
           <div className="rf-summary-card">
             <div className="rf-summary-name">
-              {retailer.name || "Store Name"}
+              {form.name || "Store Name"}
             </div>
             <div className="rf-summary-line">
-              {retailer.address || "Address line"}
+              {form.address || "Address line"}
             </div>
             <div className="rf-summary-line">
-              {(retailer.city || "City") +
-                ", " +
-                (retailer.state || "State") +
-                " - " +
-                (retailer.pincode || "PIN")}
+              {form.city || "City"},{" "}
+              {form.state || "State"}{" "}
+              {form.pincode ? `- ${form.pincode}` : "- PIN"}
             </div>
             <div className="rf-summary-line">
-              PAN: {retailer.pan || "XXXXXXXXXX"}
+              Phone: {form.phone || "XXXXXXXXXX"}
             </div>
             <div className="rf-summary-line">
-              GSTIN: {retailer.gst || "XXXXXXXXXXXXXXX"}
+              Email: {form.email || "XXXX@XXXXXX"}
+            </div>
+            <div className="rf-summary-line">
+              PAN: {form.pan || "XXXXXXXXXX"}
+            </div>
+            <div className="rf-summary-line">
+              GSTIN: {form.gstin || "XXXXXXXXXXXXXXXXX"}
             </div>
           </div>
         </div>
@@ -746,7 +905,8 @@ function RetailerProfilePage() {
   );
 }
 
-/* ===================== User Management Page ===================== */
+
+/* ===================== User Management Page =====================*/ 
 
 function UserManagementPage() {
   const [users, setUsers] = useState([
@@ -884,85 +1044,130 @@ function UserManagementPage() {
   );
 }
 
-/* ===================== Vendor Master Page ===================== */
-
+/* ===================== Vendor Master Page =====================*/ 
 function VendorMasterPage() {
-  // In real app, these would come from Item Master / backend
-  const skuOptions = [
-    {
-      value: "RR-SHIRT-001",
-      label: "RR-SHIRT-001 – Rare Rabbit Slim Fit Shirt",
-    },
-    {
-      value: "RR-TSHIRT-002",
-      label: "RR-TSHIRT-002 – Graphic Tee",
-    },
-    {
-      value: "RR-TROUSER-003",
-      label: "RR-TROUSER-003 – Chino Trouser",
-    },
-  ];
+  const [vendors, setVendors] = useState([]);
+  const [items, setItems] = useState([]);          // <-- all SKUs from Item Master
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState(null);
+  const [error, setError] = useState("");
 
-  const [vendors, setVendors] = useState([
-    {
-      id: 1,
-      code: "V0001",
-      name: "ABC Traders",
-      address: "No 12, MG Road, Bengaluru",
-      email: "contact@abctraders.com",
-      phone: "9876543210",
-      skus: ["RR-SHIRT-001"],
-      status: "Active",
-      isEditing: false,
-    },
-  ]);
+  // ---- Initial load: vendors + items ----
+  useEffect(() => {
+    async function load() {
+      try {
+        setLoading(true);
+        const [vendorRes, itemRes] = await Promise.all([
+          axios.get(`${API_BASE}/vendors`),
+          axios.get(`${API_BASE}/items`),
+        ]);
+        setVendors(vendorRes.data);
+        setItems(itemRes.data);
+        setError("");
+      } catch (err) {
+        console.error("Error loading Vendor Master:", err);
+        setError("Failed to load vendor data");
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
 
-  const getNextVendorCode = () => {
-    if (vendors.length === 0) return "V0001";
-    const nums = vendors
-      .map((v) => parseInt(String(v.code).replace("V", ""), 10))
-      .filter((n) => !Number.isNaN(n));
-    const max = nums.length ? Math.max(...nums) : 0;
-    const next = max + 1;
-    return `V${String(next).padStart(4, "0")}`;
+  // ---- Add Vendor (creates row in DB then shows in table) ----
+  const handleAddVendor = async () => {
+    const name = window.prompt("Enter Vendor Name");
+    if (!name || !name.trim()) return;
+
+    try {
+      const payload = {
+        vendor_name: name.trim(),
+        address: "",
+        email: "",
+        phone: "",
+        tagged_skus: [],
+        status: "Active",
+      };
+      const res = await axios.post(`${API_BASE}/vendors`, payload);
+      setVendors((prev) => [...prev, res.data]);
+    } catch (err) {
+      console.error("Error creating vendor:", err);
+      alert(
+        err.response?.data?.detail || "Failed to create vendor. Check console."
+      );
+    }
   };
 
-  const handleAddVendor = () => {
-    const newVendor = {
-      id: Date.now(),
-      code: getNextVendorCode(),
-      name: "",
-      address: "",
-      email: "",
-      phone: "",
-      skus: [],
-      status: "Active",
-      isEditing: true,
-    };
-    setVendors((prev) => [...prev, newVendor]);
-  };
-
-  const updateVendorField = (index, field, value) => {
-    setVendors((prev) => {
-      const copy = [...prev];
-      copy[index] = { ...copy[index], [field]: value };
-      return copy;
-    });
-  };
-
-  const handleSkuChange = (index, event) => {
-    const selected = Array.from(event.target.selectedOptions).map(
-      (opt) => opt.value
+  // ---- Local field edits ----
+  const handleFieldChange = (vendorId, field, value) => {
+    setVendors((prev) =>
+      prev.map((v) => (v.id === vendorId ? { ...v, [field]: value } : v))
     );
-    updateVendorField(index, "skus", selected);
   };
 
-  const toggleEdit = (index) => {
-    updateVendorField(index, "isEditing", true);
+  // ---- Tagged SKUs: add from dropdown (Item Master only) ----
+  const handleAddTaggedSku = (vendorId, sku) => {
+    if (!sku) return;
+    setVendors((prev) =>
+      prev.map((v) => {
+        if (v.id !== vendorId) return v;
+        const current = v.tagged_skus || [];
+        if (current.includes(sku)) return v;
+        return { ...v, tagged_skus: [...current, sku] };
+      })
+    );
   };
 
-  const saveVendor = (index) => {
-    updateVendorField(index, "isEditing", false);
+  // ---- Tagged SKUs: remove one tag ----
+  const handleRemoveTaggedSku = (vendorId, sku) => {
+    setVendors((prev) =>
+      prev.map((v) =>
+        v.id === vendorId
+          ? { ...v, tagged_skus: (v.tagged_skus || []).filter((s) => s !== sku) }
+          : v
+      )
+    );
+  };
+
+  // ---- Save vendor (PUT) ----
+  const handleSaveVendor = async (vendor) => {
+    try {
+      setSavingId(vendor.id);
+
+      const payload = {
+        vendor_code: vendor.vendor_code, // keep same code unless backend changes
+        vendor_name: vendor.vendor_name || "",
+        address: vendor.address || "",
+        email: vendor.email || "",
+        phone: vendor.phone || "",
+        tagged_skus: vendor.tagged_skus || [],
+        status: vendor.status || "Active",
+      };
+
+      await axios.put(`${API_BASE}/vendors/${vendor.id}`, payload);
+    } catch (err) {
+      console.error("Error saving vendor:", err);
+      alert(
+        err.response?.data?.detail ||
+          "Failed to save vendor. Check console for details."
+      );
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  // ---- Delete vendor ----
+  const handleDeleteVendor = async (vendorId) => {
+    const ok = window.confirm("Delete this vendor?");
+    if (!ok) return;
+
+    try {
+      await axios.delete(`${API_BASE}/vendors/${vendorId}`);
+      setVendors((prev) => prev.filter((v) => v.id !== vendorId));
+    } catch (err) {
+      console.error("Error deleting vendor:", err);
+      alert("Failed to delete vendor");
+    }
   };
 
   return (
@@ -970,9 +1175,10 @@ function VendorMasterPage() {
       <div className="rf-page-header">
         <h2>Vendor Master</h2>
         <p>
-          Maintain vendor records with contact details and linked SKUs from Item
-          Master. Only <strong>Active</strong> vendors will be considered for
-          future purchase workflows.
+          Maintain vendor records with contact details and{" "}
+          <strong>SKU tags from Item Master</strong>. Only{" "}
+          <strong>Active</strong> vendors will be considered for purchase
+          workflows.
         </p>
       </div>
 
@@ -988,202 +1194,321 @@ function VendorMasterPage() {
           </button>
         </div>
 
-        <div className="rf-table-wrapper">
-          <table className="rf-table rf-table-vendors">
-            <thead>
-              <tr>
-                <th>Vendor Code</th>
-                <th>Vendor Name</th>
-                <th>Address</th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>Tagged SKUs</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vendors.map((v, index) => (
-                <tr key={v.id}>
-                  <td>{v.code}</td>
-
-                  {/* Name */}
-                  <td>
-                    {v.isEditing ? (
-                      <input
-                        className="rf-cell-input"
-                        value={v.name}
-                        onChange={(e) =>
-                          updateVendorField(index, "name", e.target.value)
-                        }
-                        placeholder="ABC Traders"
-                      />
-                    ) : (
-                      v.name || "-"
-                    )}
-                  </td>
-
-                  {/* Address */}
-                  <td>
-                    {v.isEditing ? (
-                      <input
-                        className="rf-cell-input"
-                        value={v.address}
-                        onChange={(e) =>
-                          updateVendorField(index, "address", e.target.value)
-                        }
-                        placeholder="Address"
-                      />
-                    ) : (
-                      v.address || "-"
-                    )}
-                  </td>
-
-                  {/* Email */}
-                  <td>
-                    {v.isEditing ? (
-                      <input
-                        className="rf-cell-input"
-                        value={v.email}
-                        onChange={(e) =>
-                          updateVendorField(index, "email", e.target.value)
-                        }
-                        placeholder="vendor@email.com"
-                      />
-                    ) : (
-                      v.email || "-"
-                    )}
-                  </td>
-
-                  {/* Phone */}
-                  <td>
-                    {v.isEditing ? (
-                      <input
-                        className="rf-cell-input"
-                        value={v.phone}
-                        onChange={(e) =>
-                          updateVendorField(index, "phone", e.target.value)
-                        }
-                        placeholder="9876543210"
-                      />
-                    ) : (
-                      v.phone || "-"
-                    )}
-                  </td>
-
-                  {/* SKUs */}
-                  <td>
-                    {v.isEditing ? (
-                      <select
-                        multiple
-                        className="rf-sku-multiselect"
-                        value={v.skus}
-                        onChange={(e) => handleSkuChange(index, e)}
-                      >
-                        {skuOptions.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <div className="rf-sku-chips">
-                        {v.skus.length ? (
-                          v.skus.map((sku) => (
-                            <span key={sku} className="rf-sku-chip">
-                              {sku}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="rf-sku-empty">No SKUs</span>
-                        )}
-                      </div>
-                    )}
-                  </td>
-
-                  {/* Status */}
-                  <td>
-                    <select
-                      className="rf-cell-select"
-                      value={v.status}
-                      onChange={(e) =>
-                        updateVendorField(index, "status", e.target.value)
-                      }
-                    >
-                      <option value="Active">Active</option>
-                      <option value="Inactive">Inactive</option>
-                    </select>
-                  </td>
-
-                  {/* Actions */}
-                  <td>
-                    <div className="rf-table-actions">
-                      {v.isEditing ? (
-                        <button
-                          type="button"
-                          className="rf-text-button"
-                          onClick={() => saveVendor(index)}
-                        >
-                          Save
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="rf-text-button"
-                          onClick={() => toggleEdit(index)}
-                        >
-                          Edit
-                        </button>
-                      )}
-                    </div>
-                  </td>
+        {loading ? (
+          <p style={{ fontSize: "13px", color: "#6b7280" }}>Loading...</p>
+        ) : (
+          <div className="rf-table-wrapper">
+            <table className="rf-table">
+              <thead>
+                <tr>
+                  <th>Vendor Code</th>
+                  <th>Vendor Name</th>
+                  <th>Address</th>
+                  <th>Email</th>
+                  <th>Phone</th>
+                  <th>Tagged SKUs</th>
+                  <th>Status</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {vendors.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={8}
+                      style={{ fontSize: "13px", color: "#6b7280" }}
+                    >
+                      No vendors found. Click <strong>+ Add Vendor</strong> to
+                      create one.
+                    </td>
+                  </tr>
+                )}
+
+                {vendors.map((v) => {
+                  const currentSkus = v.tagged_skus || [];
+
+                  // SKUs not yet tagged for this vendor
+                  const availableSkus = items
+                    .map((it) => it.sku_code)
+                    .filter((sku) => sku && !currentSkus.includes(sku));
+
+                  return (
+                    <tr key={v.id}>
+                      {/* Vendor Code (read-only) */}
+                      <td>{v.vendor_code}</td>
+
+                      {/* Vendor Name */}
+                      <td>
+                        <input
+                          className="rf-cell-input"
+                          value={v.vendor_name || ""}
+                          onChange={(e) =>
+                            handleFieldChange(
+                              v.id,
+                              "vendor_name",
+                              e.target.value
+                            )
+                          }
+                        />
+                      </td>
+
+                      {/* Address */}
+                      <td>
+                        <input
+                          className="rf-cell-input"
+                          value={v.address || ""}
+                          onChange={(e) =>
+                            handleFieldChange(v.id, "address", e.target.value)
+                          }
+                        />
+                      </td>
+
+                      {/* Email */}
+                      <td>
+                        <input
+                          className="rf-cell-input"
+                          value={v.email || ""}
+                          onChange={(e) =>
+                            handleFieldChange(v.id, "email", e.target.value)
+                          }
+                        />
+                      </td>
+
+                      {/* Phone */}
+                      <td>
+                        <input
+                          className="rf-cell-input"
+                          value={v.phone || ""}
+                          onChange={(e) =>
+                            handleFieldChange(v.id, "phone", e.target.value)
+                          }
+                        />
+                      </td>
+
+                      {/* Tagged SKUs: chips + dropdown (Item Master only) */}
+                      <td>
+                        <div className="rf-tagged-skus">
+                          {currentSkus.map((sku) => (
+                            <span key={sku} className="rf-sku-tag">
+                              {sku}
+                              <button
+                                type="button"
+                                className="rf-sku-tag-remove"
+                                onClick={() =>
+                                  handleRemoveTaggedSku(v.id, sku)
+                                }
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+
+                        <select
+                          className="rf-cell-input rf-sku-select"
+                          onChange={(e) => {
+                            const sku = e.target.value;
+                            if (sku) {
+                              handleAddTaggedSku(v.id, sku);
+                              e.target.value = "";
+                            }
+                          }}
+                          value=""
+                        >
+                          <option value="">
+                            {availableSkus.length === 0
+                              ? "All SKUs tagged"
+                              : "+ Add SKU"}
+                          </option>
+                          {availableSkus.map((sku) => (
+                            <option key={sku} value={sku}>
+                              {sku}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+
+                      {/* Status dropdown */}
+                      <td>
+                        <select
+                          className="rf-cell-input"
+                          value={v.status || "Active"}
+                          onChange={(e) =>
+                            handleFieldChange(v.id, "status", e.target.value)
+                          }
+                        >
+                          <option value="Active">Active</option>
+                          <option value="Inactive">Inactive</option>
+                        </select>
+                      </td>
+
+                      {/* Actions */}
+                      <td>
+                        <button
+                          type="button"
+                          className="rf-text-button"
+                          onClick={() => handleSaveVendor(v)}
+                          disabled={savingId === v.id}
+                          style={{ marginRight: "8px" }}
+                        >
+                          {savingId === v.id ? "Saving..." : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          className="rf-text-button"
+                          onClick={() => handleDeleteVendor(v.id)}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {error && (
+          <p style={{ fontSize: "12px", color: "#b91c1c", marginTop: "8px" }}>
+            {error}
+          </p>
+        )}
 
         <p className="rf-table-footnote">
-          Note: SKU list is mocked for now. In the final version, these SKUs
-          will be pulled from Item Master / database.
+          Tagged SKUs are picked <strong>only</strong> from Item Master. Later,
+          the PO module will allow selecting vendor + SKU based on this
+          mapping.
         </p>
       </div>
     </div>
   );
 }
-/* ===================== HSN Master Page ===================== */
-function HSNMasterPage() {
-  const [rows, setRows] = useState([
-    {
-      id: 1,
-      code: "6105",
-      description: "Men's cotton shirts",
-      cgst: 2.5,
-      sgst: 2.5,
-      igst: 5.0,
-    },
-  ]);
 
-  const handleAddRow = () => {
-    setRows((prev) => [
+/* ===================== HSN Master Page =====================*/
+function HSNMasterPage() {
+  const [rows, setRows] = useState([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  // Form state for new HSN
+  const [newHSN, setNewHSN] = useState({
+    hsn_code: "",
+    description: "",
+    cgst_rate: 0,
+    sgst_rate: 0,
+    igst_rate: 0,
+  });
+
+  const [savingId, setSavingId] = useState(null); // row currently saving
+
+  // ---- Load list from backend on mount ----
+  useEffect(() => {
+    axios
+      .get(`${API_BASE}/hsn`)
+      .then((res) => {
+        setRows(res.data);
+        setError("");
+      })
+      .catch((err) => {
+        console.error("Error loading HSN:", err);
+        setError("Failed to load HSN data");
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  // ---- Add HSN form handlers ----
+  const handleInputChange = (field, value) => {
+    setNewHSN((prev) => ({
       ...prev,
-      {
-        id: Date.now(),
-        code: "",
-        description: "",
-        cgst: "",
-        sgst: "",
-        igst: "",
-      },
-    ]);
+      [field]: value,
+    }));
   };
 
-  const updateField = (index, field, value) => {
-    setRows((prev) => {
-      const copy = [...prev];
-      copy[index] = { ...copy[index], [field]: value };
-      return copy;
-    });
+  const handleCreateHSN = async (e) => {
+    e.preventDefault();
+
+    if (!newHSN.hsn_code.trim()) {
+      alert("HSN code is required");
+      return;
+    }
+
+    try {
+      const payload = {
+        hsn_code: newHSN.hsn_code.trim(),
+        description: newHSN.description.trim(),
+        cgst_rate: Number(newHSN.cgst_rate) || 0,
+        sgst_rate: Number(newHSN.sgst_rate) || 0,
+        igst_rate: Number(newHSN.igst_rate) || 0,
+      };
+
+      const res = await axios.post(`${API_BASE}/hsn`, payload);
+
+      setRows((prev) => [...prev, res.data]);
+
+      setNewHSN({
+        hsn_code: "",
+        description: "",
+        cgst_rate: 0,
+        sgst_rate: 0,
+        igst_rate: 0,
+      });
+    } catch (err) {
+      console.error("Error creating HSN:", err);
+      if (err.response?.data?.detail) {
+        alert(err.response.data.detail);
+      } else {
+        alert("Failed to create HSN row");
+      }
+    }
+  };
+
+  // ---- Inline editing handlers ----
+
+  // update local state when typing in table cells
+  const handleFieldChange = (rowId, field, value) => {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.id === rowId ? { ...row, [field]: value } : row
+      )
+    );
+  };
+
+  // save one row to backend (PUT)
+  const handleSaveRow = async (row) => {
+    try {
+      setSavingId(row.id);
+      const payload = {
+        hsn_code: row.hsn_code || "",
+        description: row.description || "",
+        cgst_rate: Number(row.cgst_rate) || 0,
+        sgst_rate: Number(row.sgst_rate) || 0,
+        igst_rate: Number(row.igst_rate) || 0,
+      };
+
+      await axios.put(`${API_BASE}/hsn/${row.id}`, payload);
+      // optional: toast/alert
+      // alert("HSN updated");
+    } catch (err) {
+      console.error("Error saving HSN:", err);
+      alert("Failed to save HSN row");
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  // delete row from backend + state
+  const handleDeleteRow = async (rowId) => {
+    const confirmDelete = window.confirm("Delete this HSN row?");
+    if (!confirmDelete) return;
+
+    try {
+      await axios.delete(`${API_BASE}/hsn/${rowId}`);
+      setRows((prev) => prev.filter((r) => r.id !== rowId));
+    } catch (err) {
+      console.error("Error deleting HSN:", err);
+      alert("Failed to delete HSN row");
+    }
   };
 
   return (
@@ -1191,490 +1516,939 @@ function HSNMasterPage() {
       <div className="rf-page-header">
         <h2>HSN Master</h2>
         <p>
-          Maintain HSN codes and tax split (CGST, SGST, IGST).  
-          Item Master and PO will use these values.
+          Maintain HSN codes and GST split (CGST, SGST, IGST). Item Master, PO,
+          and POS reuse these tax rates from the database.
         </p>
       </div>
 
+      {/* ---- Add HSN Form ---- */}
+      <div className="rf-card" style={{ marginBottom: "16px", padding: "16px" }}>
+        <h3 style={{ fontSize: "15px", marginBottom: "8px" }}>Add New HSN</h3>
+
+        <form
+          onSubmit={handleCreateHSN}
+          className="rf-form-grid"
+          style={{ alignItems: "flex-end" }}
+        >
+          <div className="rf-input-group">
+            <label>HSN Code</label>
+            <input
+              className="rf-cell-input"
+              value={newHSN.hsn_code}
+              onChange={(e) => handleInputChange("hsn_code", e.target.value)}
+              placeholder="6105"
+              required
+            />
+          </div>
+
+          <div className="rf-input-group rf-input-wide">
+            <label>Description</label>
+            <input
+              className="rf-cell-input"
+              value={newHSN.description}
+              onChange={(e) =>
+                handleInputChange("description", e.target.value)
+              }
+              placeholder="Men's cotton shirts"
+            />
+          </div>
+
+          <div className="rf-input-group">
+            <label>CGST %</label>
+            <input
+              type="number"
+              className="rf-cell-input"
+              value={newHSN.cgst_rate}
+              onChange={(e) =>
+                handleInputChange("cgst_rate", e.target.value)
+              }
+            />
+          </div>
+
+          <div className="rf-input-group">
+            <label>SGST %</label>
+            <input
+              type="number"
+              className="rf-cell-input"
+              value={newHSN.sgst_rate}
+              onChange={(e) =>
+                handleInputChange("sgst_rate", e.target.value)
+              }
+            />
+          </div>
+
+          <div className="rf-input-group">
+            <label>IGST %</label>
+            <input
+              type="number"
+              className="rf-cell-input"
+              value={newHSN.igst_rate}
+              onChange={(e) =>
+                handleInputChange("igst_rate", e.target.value)
+              }
+            />
+          </div>
+
+          <div className="rf-input-group">
+            <button
+              type="submit"
+              className="rf-primary-btn"
+              style={{ marginTop: "18px" }}
+            >
+              + Add HSN
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* ---- Existing HSN table (editable) ---- */}
       <div className="rf-card">
-        <div className="rf-table-header">
-          <h3>HSN Codes</h3>
-          <button
-            type="button"
-            className="rf-primary-btn"
-            onClick={handleAddRow}
-          >
-            + Add HSN
-          </button>
-        </div>
+        <h3 style={{ fontSize: "15px", marginBottom: "8px" }}>Existing HSN Codes</h3>
 
-        <div className="rf-table-wrapper">
-          <table className="rf-table rf-table-hsn">
-            <thead>
-              <tr>
-                <th>HSN Code</th>
-                <th>Description</th>
-                <th>CGST %</th>
-                <th>SGST %</th>
-                <th>IGST %</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {rows.map((row, index) => (
-                <tr key={row.id}>
-                  <td>
-                    <input
-                      className="rf-cell-input"
-                      value={row.code}
-                      onChange={(e) =>
-                        updateField(index, "code", e.target.value)
-                      }
-                      placeholder="6105"
-                    />
-                  </td>
-
-                  <td>
-                    <input
-                      className="rf-cell-input"
-                      value={row.description}
-                      onChange={(e) =>
-                        updateField(index, "description", e.target.value)
-                      }
-                      placeholder="Description"
-                    />
-                  </td>
-
-                  <td>
-                    <input
-                      type="number"
-                      className="rf-cell-input rf-tax-input"
-                      value={row.cgst}
-                      onChange={(e) =>
-                        updateField(index, "cgst", e.target.value)
-                      }
-                      placeholder="0"
-                    />
-                  </td>
-
-                  <td>
-                    <input
-                      type="number"
-                      className="rf-cell-input rf-tax-input"
-                      value={row.sgst}
-                      onChange={(e) =>
-                        updateField(index, "sgst", e.target.value)
-                      }
-                      placeholder="0"
-                    />
-                  </td>
-
-                  <td>
-                    <input
-                      type="number"
-                      className="rf-cell-input rf-tax-input"
-                      value={row.igst}
-                      onChange={(e) =>
-                        updateField(index, "igst", e.target.value)
-                      }
-                      placeholder="0"
-                    />
-                  </td>
+        {loading ? (
+          <p style={{ fontSize: "13px", color: "#6b7280" }}>Loading...</p>
+        ) : (
+          <div className="rf-table-wrapper">
+            <table className="rf-table rf-table-hsn">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>HSN Code</th>
+                  <th>Description</th>
+                  <th>CGST %</th>
+                  <th>SGST %</th>
+                  <th>IGST %</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {rows.length === 0 && (
+                  <tr>
+                    <td colSpan={7} style={{ fontSize: "13px", color: "#6b7280" }}>
+                      No HSN rows found. Add a new HSN using the form above.
+                    </td>
+                  </tr>
+                )}
+
+                {rows.map((row) => (
+                  <tr key={row.id}>
+                    <td>{row.id}</td>
+                    <td>
+                      <input
+                        className="rf-cell-input"
+                        value={row.hsn_code || ""}
+                        onChange={(e) =>
+                          handleFieldChange(row.id, "hsn_code", e.target.value)
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="rf-cell-input"
+                        value={row.description || ""}
+                        onChange={(e) =>
+                          handleFieldChange(
+                            row.id,
+                            "description",
+                            e.target.value
+                          )
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className="rf-cell-input rf-tax-input"
+                        value={row.cgst_rate ?? 0}
+                        onChange={(e) =>
+                          handleFieldChange(
+                            row.id,
+                            "cgst_rate",
+                            e.target.value
+                          )
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className="rf-cell-input rf-tax-input"
+                        value={row.sgst_rate ?? 0}
+                        onChange={(e) =>
+                          handleFieldChange(
+                            row.id,
+                            "sgst_rate",
+                            e.target.value
+                          )
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className="rf-cell-input rf-tax-input"
+                        value={row.igst_rate ?? 0}
+                        onChange={(e) =>
+                          handleFieldChange(
+                            row.id,
+                            "igst_rate",
+                            e.target.value
+                          )
+                        }
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="rf-text-button"
+                        onClick={() => handleSaveRow(row)}
+                        disabled={savingId === row.id}
+                        style={{ marginRight: "8px" }}
+                      >
+                        {savingId === row.id ? "Saving..." : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        className="rf-text-button"
+                        onClick={() => handleDeleteRow(row.id)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {error && (
+          <p style={{ fontSize: "12px", color: "#b91c1c", marginTop: "8px" }}>
+            {error}
+          </p>
+        )}
 
         <p className="rf-table-footnote">
-          Item Master & Purchase Orders will use these tax rates.
+          Data is stored in <code>retailflow.db</code> (SQLite) via FastAPI.
         </p>
       </div>
     </div>
   );
 }
-/* ===================== Purchase Order Page ===================== */
+
+/* ===================== Purchase Order Page =====================*/ 
 function PurchaseOrderPage() {
-  // Mock HSN data (this should mirror your HSN Master later from DB)
-  const hsnRates = [
-    { code: "6105", description: "Men's cotton shirts", cgst: 2.5, sgst: 2.5, igst: 5.0 },
-    { code: "6109", description: "T-shirts, singlets and vests", cgst: 2.5, sgst: 2.5, igst: 5.0 },
-    { code: "6203", description: "Men's suits, jackets, trousers", cgst: 6.0, sgst: 6.0, igst: 12.0 },
-  ];
+  const [vendors, setVendors] = useState([]);
+  const [items, setItems] = useState([]);
+  const [hsnList, setHsnList] = useState([]);
+  const [poList, setPoList] = useState([]);
 
-  // Mock items (simulating Item Master)
-  const itemOptions = [
-    {
-      id: 1,
-      sku: "RR-SHIRT-001",
-      name: "Slim Fit Cotton Shirt",
-      hsnCode: "6105",
-    },
-    {
-      id: 2,
-      sku: "RR-TSHIRT-002",
-      name: "Graphic Tee",
-      hsnCode: "6109",
-    },
-    {
-      id: 3,
-      sku: "RR-TROUSER-003",
-      name: "Chino Trouser",
-      hsnCode: "6203",
-    },
-  ];
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
 
-  // Mock vendors (from Vendor Master in future)
-  const vendorOptions = [
-    { id: 1, name: "ABC Traders" },
-    { id: 2, name: "XYZ Fabrics" },
-    { id: 3, name: "Urban Styles Ltd" },
-  ];
+  // ---- PO Header ----
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const defaultExpiry = new Date();
+  defaultExpiry.setDate(defaultExpiry.getDate() + 60);
+  const expiryStr = defaultExpiry.toISOString().slice(0, 10);
 
-  const [poNumber] = useState("PO0001"); // later: auto-generate
-  const [poDate, setPoDate] = useState(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    return today;
+  const [header, setHeader] = useState({
+    poNumber: "",
+    poDate: todayStr,
+    vendorId: "",
+    paymentTerms: "60 days credit",
+    expiryDate: expiryStr,
+    remarks: "",
+    taxMode: "CGST_SGST", // or "IGST"
   });
-  const [vendorId, setVendorId] = useState("");
-  const [status, setStatus] = useState("Draft");
 
-  const [lines, setLines] = useState([
-    {
-      id: Date.now(),
-      itemId: "",
-      sku: "",
-      description: "",
-      hsnCode: "",
-      qty: "",
-      rate: "",
-    },
-  ]);
+  // ---- Line items ----
+  const makeEmptyLine = () => ({
+    sku_code: "",
+    description: "",
+    qty: 1,
+    rate: 0,
+    hsn_code: "",
+    cgst_rate: 0,
+    sgst_rate: 0,
+    igst_rate: 0,
+    line_subtotal: 0,
+    cgst_amount: 0,
+    sgst_amount: 0,
+    igst_amount: 0,
+    line_tax: 0,
+    line_total: 0,
+  });
 
-  const getHsnRates = (hsnCode) => {
-    const h = hsnRates.find((x) => x.code === hsnCode);
-    return (
-      h || {
-        code: "",
-        description: "",
-        cgst: 0,
-        sgst: 0,
-        igst: 0,
+  const [lines, setLines] = useState([makeEmptyLine()]);
+
+  // ---- Load master data + existing POs ----
+  useEffect(() => {
+    const loadAll = async () => {
+      try {
+        const [vendorsRes, itemsRes, hsnRes, poRes] = await Promise.all([
+          axios.get(`${API_BASE}/vendors`),
+          axios.get(`${API_BASE}/items`),
+          axios.get(`${API_BASE}/hsn`),
+          axios.get(`${API_BASE}/purchase-orders`).catch(() => ({ data: [] })),
+        ]);
+        setVendors(vendorsRes.data || []);
+        setItems(itemsRes.data || []);
+        setHsnList(hsnRes.data || []);
+        setPoList(poRes.data || []);
+      } catch (err) {
+        console.error("Failed to load PO masters", err);
       }
-    );
+    };
+    loadAll();
+  }, []);
+
+  // ---- Helpers ----
+
+  const handleHeaderChange = (field) => (e) => {
+    setHeader((prev) => ({
+      ...prev,
+      [field]: e.target.value,
+    }));
+    setMessage("");
   };
 
-  const computeLineAmounts = (line) => {
-    const { cgst, sgst, igst } = getHsnRates(line.hsnCode);
+  const findItemBySku = (sku) => items.find((it) => it.sku_code === sku);
+  const findHsnByCode = (code) => hsnList.find((h) => h.hsn_code === code);
+
+  const recalcLine = (line) => {
     const qty = Number(line.qty) || 0;
     const rate = Number(line.rate) || 0;
     const base = qty * rate;
-    const cgstAmt = (base * cgst) / 100;
-    const sgstAmt = (base * sgst) / 100;
-    const igstAmt = (base * igst) / 100;
-    const total = base + cgstAmt + sgstAmt + igstAmt;
-    return { base, cgst, sgst, igst, cgstAmt, sgstAmt, igstAmt, total };
+
+    const cgstRate = Number(line.cgst_rate) || 0;
+    const sgstRate = Number(line.sgst_rate) || 0;
+    const igstRate = Number(line.igst_rate) || 0;
+
+    let cgstAmt = 0;
+    let sgstAmt = 0;
+    let igstAmt = 0;
+
+    if (header.taxMode === "CGST_SGST") {
+      cgstAmt = (base * cgstRate) / 100;
+      sgstAmt = (base * sgstRate) / 100;
+    } else {
+      igstAmt = (base * igstRate) / 100;
+    }
+
+    const tax = cgstAmt + sgstAmt + igstAmt;
+
+    return {
+      ...line,
+      line_subtotal: base,
+      cgst_amount: cgstAmt,
+      sgst_amount: sgstAmt,
+      igst_amount: igstAmt,
+      line_tax: tax,
+      line_total: base + tax,
+    };
+  };
+
+  const handleLineChange = (index, field, value) => {
+    setLines((prev) => {
+      const newLines = [...prev];
+      let line = { ...newLines[index], [field]: value };
+
+      // When SKU is changed, auto-fill description + HSN + tax
+      if (field === "sku_code") {
+        const item = findItemBySku(value);
+        if (item) {
+          const hsn = item.hsn_code;
+          const hsnRow = findHsnByCode(hsn);
+
+          line.description =
+            item.style ||
+            `${item.brand || ""} ${item.category || ""}`.trim();
+          line.hsn_code = hsn || "";
+
+          if (hsnRow) {
+            line.cgst_rate = hsnRow.cgst_rate || 0;
+            line.sgst_rate = hsnRow.sgst_rate || 0;
+            line.igst_rate = hsnRow.igst_rate || 0;
+          }
+        }
+      }
+
+      // Recalculate totals
+      line = recalcLine(line);
+      newLines[index] = line;
+      return newLines;
+    });
+    setMessage("");
+  };
+
+  const handleTaxModeChange = (e) => {
+    const mode = e.target.value;
+    setHeader((prev) => ({ ...prev, taxMode: mode }));
+    setLines((prev) => prev.map((ln) => recalcLine(ln)));
   };
 
   const addLine = () => {
-    setLines((prev) => [
+    setLines((prev) => [...prev, makeEmptyLine()]);
+  };
+
+  const removeLine = (index) => {
+    setLines((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const clearForm = () => {
+    setHeader((prev) => ({
       ...prev,
-      {
-        id: Date.now() + Math.random(),
-        itemId: "",
-        sku: "",
-        description: "",
-        hsnCode: "",
-        qty: "",
-        rate: "",
-      },
-    ]);
+      poNumber: "",
+      poDate: todayStr,
+      expiryDate: expiryStr,
+      remarks: "",
+    }));
+    setLines([makeEmptyLine()]);
   };
 
-  const removeLine = (lineId) => {
-    setLines((prev) => prev.filter((l) => l.id !== lineId));
-  };
-
-  const updateLineField = (index, field, value) => {
-    setLines((prev) => {
-      const copy = [...prev];
-      copy[index] = { ...copy[index], [field]: value };
-      return copy;
-    });
-  };
-
-  const handleSkuChange = (index, sku) => {
-    const item = itemOptions.find((it) => it.sku === sku);
-    setLines((prev) => {
-      const copy = [...prev];
-      copy[index] = {
-        ...copy[index],
-        itemId: item ? item.id : "",
-        sku: item ? item.sku : "",
-        description: item ? item.name : "",
-        hsnCode: item ? item.hsnCode : "",
-      };
-      return copy;
-    });
-  };
-
-  // Compute totals for PO
-  const totals = lines.reduce(
-    (acc, line) => {
-      const { base, cgstAmt, sgstAmt, igstAmt, total } = computeLineAmounts(
-        line
-      );
-      acc.subtotal += base;
-      acc.cgst += cgstAmt;
-      acc.sgst += sgstAmt;
-      acc.igst += igstAmt;
-      acc.grandTotal += total;
+  const grandTotals = lines.reduce(
+    (acc, ln) => {
+      acc.subtotal += ln.line_subtotal || 0;
+      acc.cgst += ln.cgst_amount || 0;
+      acc.sgst += ln.sgst_amount || 0;
+      acc.igst += ln.igst_amount || 0;
+      acc.tax += ln.line_tax || 0;
+      acc.total += ln.line_total || 0;
       return acc;
     },
-    { subtotal: 0, cgst: 0, sgst: 0, igst: 0, grandTotal: 0 }
+    { subtotal: 0, cgst: 0, sgst: 0, igst: 0, tax: 0, total: 0 }
   );
 
-  const handleSavePo = () => {
-    // For now just console.log; later send to backend
-    console.log("PO Saved (mock):", {
-      poNumber,
-      poDate,
-      vendorId,
-      status,
-      lines,
-    });
-    alert("PO data logged to console (mock save).");
+  const selectedVendor = vendors.find(
+    (v) => v.id === Number(header.vendorId)
+  );
+
+  // ---- Save PO to DB ----
+  const handleSavePo = async () => {
+    try {
+      setSaving(true);
+      setMessage("");
+
+      if (!header.vendorId) {
+        setMessage("Select a vendor before saving PO.");
+        setSaving(false);
+        return;
+      }
+
+      const payload = {
+        po_number: header.poNumber || null,
+        po_date: header.poDate,
+        expiry_date: header.expiryDate,
+        payment_terms: header.paymentTerms,
+        remarks: header.remarks,
+        tax_mode: header.taxMode, // "CGST_SGST" or "IGST"
+        vendor_id: Number(header.vendorId),
+
+        retailer_name: INITIAL_RETAILER.name,
+        retailer_address: `${INITIAL_RETAILER.address}, ${INITIAL_RETAILER.city}, ${INITIAL_RETAILER.state} - ${INITIAL_RETAILER.pincode}`,
+        retailer_gstin: INITIAL_RETAILER.gstin,
+
+        lines: lines
+          .filter((ln) => ln.sku_code && ln.qty > 0)
+          .map((ln) => ({
+            sku_code: ln.sku_code,
+            description: ln.description,
+            qty: Number(ln.qty) || 0,
+            rate: Number(ln.rate) || 0,
+            hsn_code: ln.hsn_code,
+            cgst_rate: Number(ln.cgst_rate) || 0,
+            sgst_rate: Number(ln.sgst_rate) || 0,
+            igst_rate: Number(ln.igst_rate) || 0,
+            line_subtotal: ln.line_subtotal,
+            cgst_amount: ln.cgst_amount,
+            sgst_amount: ln.sgst_amount,
+            igst_amount: ln.igst_amount,
+            line_total: ln.line_total,
+          })),
+      };
+
+      const res = await axios.post(`${API_BASE}/purchase-orders`, payload);
+
+      setMessage("PO saved successfully.");
+      setPoList((prev) => [...prev, res.data]);
+      // clearForm();  // enable if you want to reset after save
+    } catch (err) {
+      console.error("Failed to save PO", err);
+      setMessage("Error saving PO. Check console.");
+    } finally {
+      setSaving(false);
+    }
   };
+
+  // ---- Print / Download PDF ----
+  const handlePrint = () => {
+    window.print();
+  };
+
+  // ============== RENDER ==============
 
   return (
     <div className="rf-page">
       <div className="rf-page-header">
         <h2>Purchase Order</h2>
         <p>
-          Create a PO by selecting Vendor, SKUs, quantity, rate and auto-apply
-          tax from HSN Master (CGST, SGST, IGST).
+          Create and manage POs. Data is saved to the database. Use the Print
+          button to download a PDF copy.
         </p>
       </div>
 
-      <div className="rf-card">
-        {/* PO Header */}
-        <div className="rf-po-header-grid">
-          <div className="rf-input-group">
-            <label>PO Number</label>
-            <input type="text" value={poNumber} disabled />
-          </div>
+      {/* PO Form + Preview (print friendly) */}
+      <div className="rf-card rf-card-wide rf-po-print-area">
+        {/* Left side: PO header + line items */}
+        <div className="rf-form">
+          {/* Header */}
+          <div className="rf-form-grid">
+            <div className="rf-input-group">
+              <label>Vendor</label>
+              <select
+                value={header.vendorId}
+                onChange={handleHeaderChange("vendorId")}
+              >
+                <option value="">Select vendor</option>
+                {vendors.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.vendor_code} - {v.vendor_name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <div className="rf-input-group">
-            <label>PO Date</label>
-            <input
-              type="date"
-              value={poDate}
-              onChange={(e) => setPoDate(e.target.value)}
-            />
-          </div>
+            <div className="rf-input-group">
+              <label>PO Number (optional)</label>
+              <input
+                type="text"
+                value={header.poNumber}
+                onChange={handleHeaderChange("poNumber")}
+                placeholder="Auto / Manual"
+              />
+            </div>
 
-          <div className="rf-input-group">
-            <label>Vendor</label>
-            <select
-              value={vendorId}
-              onChange={(e) => setVendorId(e.target.value)}
-            >
-              <option value="">Select Vendor</option>
-              {vendorOptions.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
+            <div className="rf-input-group">
+              <label>PO Date</label>
+              <input
+                type="date"
+                value={header.poDate}
+                onChange={handleHeaderChange("poDate")}
+              />
+            </div>
+
+            <div className="rf-input-group">
+              <label>PO Expiry Date</label>
+              <input
+                type="date"
+                value={header.expiryDate}
+                onChange={handleHeaderChange("expiryDate")}
+              />
+            </div>
+
+            <div className="rf-input-group">
+              <label>Payment Terms</label>
+              <input
+                type="text"
+                value={header.paymentTerms}
+                onChange={handleHeaderChange("paymentTerms")}
+                placeholder="e.g. 60 days credit"
+              />
+            </div>
+
+            <div className="rf-input-group">
+              <label>Tax Mode</label>
+              <select
+                value={header.taxMode}
+                onChange={handleTaxModeChange}
+              >
+                <option value="CGST_SGST">
+                  Same State (CGST + SGST)
                 </option>
-              ))}
-            </select>
+                <option value="IGST">Interstate (IGST)</option>
+              </select>
+            </div>
+
+            <div className="rf-input-group rf-input-wide">
+              <label>Remarks</label>
+              <input
+                type="text"
+                value={header.remarks}
+                onChange={handleHeaderChange("remarks")}
+                placeholder="Optional note to vendor"
+              />
+            </div>
           </div>
 
-          <div className="rf-input-group">
-            <label>Status</label>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
+          {/* Line items table */}
+          <div className="rf-table-header" style={{ marginTop: 16 }}>
+            <h3>PO Line Items</h3>
+            <button
+              type="button"
+              className="rf-primary-btn"
+              onClick={addLine}
             >
-              <option value="Draft">Draft</option>
-              <option value="Approved">Approved</option>
-            </select>
+              + Add Line
+            </button>
           </div>
-        </div>
 
-        {/* Line items table */}
-        <div className="rf-table-header">
-          <h3>Line Items</h3>
-          <button
-            type="button"
-            className="rf-primary-btn"
-            onClick={addLine}
-          >
-            + Add Line
-          </button>
-        </div>
-
-        <div className="rf-table-wrapper">
-          <table className="rf-table rf-table-po">
-            <thead>
-              <tr>
-                <th>SKU</th>
-                <th>Description</th>
-                <th>HSN</th>
-                <th>Qty</th>
-                <th>Rate</th>
-                <th>Base Amt</th>
-                <th>CGST %</th>
-                <th>CGST Amt</th>
-                <th>SGST %</th>
-                <th>SGST Amt</th>
-                <th>IGST %</th>
-                <th>IGST Amt</th>
-                <th>Line Total</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((line, index) => {
-                const {
-                  base,
-                  cgst,
-                  sgst,
-                  igst,
-                  cgstAmt,
-                  sgstAmt,
-                  igstAmt,
-                  total,
-                } = computeLineAmounts(line);
-
-                const hsnRateRow = getHsnRates(line.hsnCode);
-
-                return (
-                  <tr key={line.id}>
-                    {/* SKU */}
+          <div className="rf-table-wrapper">
+            <table className="rf-table rf-table-items rf-table-po">
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>Description</th>
+                  <th>HSN</th>
+                  <th>Qty</th>
+                  <th>Rate</th>
+                  <th>CGST%</th>
+                  <th>SGST%</th>
+                  <th>IGST%</th>
+                  <th>Subtotal</th>
+                  <th>Tax</th>
+                  <th>Total</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((ln, idx) => (
+                  <tr key={idx}>
                     <td>
                       <select
                         className="rf-cell-select"
-                        value={line.sku}
+                        value={ln.sku_code}
                         onChange={(e) =>
-                          handleSkuChange(index, e.target.value)
+                          handleLineChange(idx, "sku_code", e.target.value)
                         }
                       >
                         <option value="">Select SKU</option>
-                        {itemOptions.map((it) => (
-                          <option key={it.id} value={it.sku}>
-                            {it.sku}
+                        {items.map((it) => (
+                          <option key={it.id} value={it.sku_code}>
+                            {it.sku_code}
                           </option>
                         ))}
                       </select>
                     </td>
-
-                    {/* Description */}
-                    <td>{line.description || "-"}</td>
-
-                    {/* HSN */}
-                    <td>{line.hsnCode || "-"}</td>
-
-                    {/* Qty */}
                     <td>
                       <input
-                        type="number"
-                        className="rf-cell-input rf-po-number-input"
-                        value={line.qty}
+                        className="rf-cell-input"
+                        type="text"
+                        value={ln.description}
                         onChange={(e) =>
-                          updateLineField(index, "qty", e.target.value)
+                          handleLineChange(
+                            idx,
+                            "description",
+                            e.target.value
+                          )
                         }
-                        min="0"
                       />
                     </td>
-
-                    {/* Rate */}
                     <td>
                       <input
-                        type="number"
-                        className="rf-cell-input rf-po-number-input"
-                        value={line.rate}
+                        className="rf-cell-input"
+                        type="text"
+                        value={ln.hsn_code}
                         onChange={(e) =>
-                          updateLineField(index, "rate", e.target.value)
+                          handleLineChange(idx, "hsn_code", e.target.value)
                         }
-                        min="0"
                       />
                     </td>
-
-                    {/* Base amount */}
-                    <td>{base.toFixed(2)}</td>
-
-                    {/* CGST */}
-                    <td>{hsnRateRow.cgst}</td>
-                    <td>{cgstAmt.toFixed(2)}</td>
-
-                    {/* SGST */}
-                    <td>{hsnRateRow.sgst}</td>
-                    <td>{sgstAmt.toFixed(2)}</td>
-
-                    {/* IGST */}
-                    <td>{hsnRateRow.igst}</td>
-                    <td>{igstAmt.toFixed(2)}</td>
-
-                    {/* Line total */}
-                    <td>{total.toFixed(2)}</td>
-
-                    {/* Remove */}
                     <td>
-                      <button
-                        type="button"
-                        className="rf-text-button"
-                        onClick={() => removeLine(line.id)}
-                      >
-                        Remove
-                      </button>
+                      <input
+                        className="rf-cell-input"
+                        type="number"
+                        min="0"
+                        value={ln.qty}
+                        onChange={(e) =>
+                          handleLineChange(idx, "qty", e.target.value)
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="rf-cell-input"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={ln.rate}
+                        onChange={(e) =>
+                          handleLineChange(idx, "rate", e.target.value)
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="rf-cell-input"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={ln.cgst_rate}
+                        onChange={(e) =>
+                          handleLineChange(
+                            idx,
+                            "cgst_rate",
+                            e.target.value
+                          )
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="rf-cell-input"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={ln.sgst_rate}
+                        onChange={(e) =>
+                          handleLineChange(
+                            idx,
+                            "sgst_rate",
+                            e.target.value
+                          )
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="rf-cell-input"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={ln.igst_rate}
+                        onChange={(e) =>
+                          handleLineChange(
+                            idx,
+                            "igst_rate",
+                            e.target.value
+                          )
+                        }
+                      />
+                    </td>
+                    <td>{Number(ln.line_subtotal || 0).toFixed(2)}</td>
+                    <td>{Number(ln.line_tax || 0).toFixed(2)}</td>
+                    <td>{Number(ln.line_total || 0).toFixed(2)}</td>
+                    <td>
+                      {lines.length > 1 && (
+                        <button
+                          type="button"
+                          className="rf-link-btn"
+                          onClick={() => removeLine(idx)}
+                        >
+                          ✕
+                        </button>
+                      )}
                     </td>
                   </tr>
-                );
-              })}
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Totals + Actions */}
+          <div
+            style={{
+              marginTop: 16,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 16,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 13, color: "#4b5563" }}>
+                Subtotal:{" "}
+                <strong>{grandTotals.subtotal.toFixed(2)}</strong>
+              </div>
+              <div style={{ fontSize: 13, color: "#4b5563" }}>
+                CGST: <strong>{grandTotals.cgst.toFixed(2)}</strong>
+              </div>
+              <div style={{ fontSize: 13, color: "#4b5563" }}>
+                SGST: <strong>{grandTotals.sgst.toFixed(2)}</strong>
+              </div>
+              <div style={{ fontSize: 13, color: "#4b5563" }}>
+                IGST: <strong>{grandTotals.igst.toFixed(2)}</strong>
+              </div>
+              <div style={{ fontSize: 13, color: "#4b5563" }}>
+                Total Tax: <strong>{grandTotals.tax.toFixed(2)}</strong>
+              </div>
+              <div style={{ fontSize: 14, marginTop: 4 }}>
+                Grand Total:{" "}
+                <strong>{grandTotals.total.toFixed(2)}</strong>
+              </div>
+            </div>
+
+            <div className="rf-form-actions">
+              <button
+                type="button"
+                className="rf-primary-btn"
+                onClick={handleSavePo}
+                disabled={saving}
+              >
+                {saving ? "Saving PO..." : "Save PO"}
+              </button>
+              <button
+                type="button"
+                className="rf-primary-btn"
+                onClick={handlePrint}
+              >
+                Print / Download PO
+              </button>
+              {message && (
+                <span className="rf-save-msg" style={{ maxWidth: 260 }}>
+                  {message}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Right side: Print-friendly PO preview */}
+        <div className="rf-summary-block">
+          <h3>PO Preview</h3>
+          <div className="rf-summary-card">
+            <div className="rf-summary-name">
+              {INITIAL_RETAILER.name}
+            </div>
+            <div className="rf-summary-line">
+              {INITIAL_RETAILER.address}, {INITIAL_RETAILER.city},{" "}
+              {INITIAL_RETAILER.state} - {INITIAL_RETAILER.pincode}
+            </div>
+            <div className="rf-summary-line">
+              GSTIN: {INITIAL_RETAILER.gstin}
+            </div>
+            <div className="rf-summary-line">
+              Phone: {INITIAL_RETAILER.phone}
+            </div>
+            <div className="rf-summary-line">
+              Email: {INITIAL_RETAILER.email}
+            </div>
+
+            <hr style={{ margin: "8px 0" }} />
+
+            <div className="rf-summary-line">
+              <strong>PO No:</strong>{" "}
+              {header.poNumber || "(auto/manual)"}
+            </div>
+            <div className="rf-summary-line">
+              <strong>PO Date:</strong> {header.poDate}
+            </div>
+            <div className="rf-summary-line">
+              <strong>Valid Till:</strong> {header.expiryDate}
+            </div>
+            <div className="rf-summary-line">
+              <strong>Payment Terms:</strong> {header.paymentTerms}
+            </div>
+            <div className="rf-summary-line">
+              <strong>Tax Mode:</strong>{" "}
+              {header.taxMode === "CGST_SGST"
+                ? "Same State (CGST+SGST)"
+                : "Interstate (IGST)"}
+            </div>
+
+            <hr style={{ margin: "8px 0" }} />
+
+            <div className="rf-summary-line">
+              <strong>Vendor:</strong>{" "}
+              {selectedVendor
+                ? `${selectedVendor.vendor_code} - ${selectedVendor.vendor_name}`
+                : "Not selected"}
+            </div>
+
+            <hr style={{ margin: "8px 0" }} />
+
+            <div style={{ maxHeight: 260, overflowY: "auto" }}>
+              <table
+                className="rf-table"
+                style={{ fontSize: 11, marginTop: 4 }}
+              >
+                <thead>
+                  <tr>
+                    <th>SKU</th>
+                    <th>Desc</th>
+                    <th>Qty</th>
+                    <th>Rate</th>
+                    <th>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines
+                    .filter((ln) => ln.sku_code)
+                    .map((ln, idx) => (
+                      <tr key={idx}>
+                        <td>{ln.sku_code}</td>
+                        <td>{ln.description}</td>
+                        <td>{ln.qty}</td>
+                        <td>{ln.rate}</td>
+                        <td>{Number(ln.line_total || 0).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div
+              style={{
+                marginTop: 8,
+                textAlign: "right",
+                fontSize: 12,
+              }}
+            >
+              <div>Subtotal: {grandTotals.subtotal.toFixed(2)}</div>
+              <div>Tax: {grandTotals.tax.toFixed(2)}</div>
+              <div>
+                <strong>Total: {grandTotals.total.toFixed(2)}</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Saved POs */}
+      <div style={{ marginTop: 24 }}>
+        <h3 style={{ fontSize: 15, marginBottom: 8 }}>Saved POs</h3>
+        <div className="rf-table-wrapper">
+          <table className="rf-table">
+            <thead>
+              <tr>
+                <th>PO No</th>
+                <th>Date</th>
+                <th>Vendor</th>
+                <th>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {poList.length === 0 && (
+                <tr>
+                  <td colSpan={4} style={{ fontSize: 13, color: "#6b7280" }}>
+                    No POs saved yet.
+                  </td>
+                </tr>
+              )}
+              {poList.map((po) => (
+                <tr key={po.id}>
+                  <td>{po.po_number || po.id}</td>
+                  <td>{po.po_date}</td>
+                  <td>
+                    {po.vendor_code
+                      ? `${po.vendor_code} - ${po.vendor_name}`
+                      : po.vendor_id}
+                  </td>
+                  <td>
+                    {po.grand_total !== undefined
+                      ? Number(po.grand_total).toFixed(2)
+                      : "-"}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
-        </div>
-
-        {/* PO totals */}
-        <div className="rf-po-summary">
-          <div className="rf-po-summary-row">
-            <span>Subtotal</span>
-            <span>₹ {totals.subtotal.toFixed(2)}</span>
-          </div>
-          <div className="rf-po-summary-row">
-            <span>CGST</span>
-            <span>₹ {totals.cgst.toFixed(2)}</span>
-          </div>
-          <div className="rf-po-summary-row">
-            <span>SGST</span>
-            <span>₹ {totals.sgst.toFixed(2)}</span>
-          </div>
-          <div className="rf-po-summary-row">
-            <span>IGST</span>
-            <span>₹ {totals.igst.toFixed(2)}</span>
-          </div>
-          <div className="rf-po-summary-row rf-po-summary-total">
-            <span>Grand Total</span>
-            <span>₹ {totals.grandTotal.toFixed(2)}</span>
-          </div>
-        </div>
-
-        <div className="rf-form-actions" style={{ marginTop: "16px" }}>
-          <button
-            type="button"
-            className="rf-primary-btn"
-            onClick={handleSavePo}
-          >
-            Save PO (Mock)
-          </button>
-          <span className="rf-save-msg">
-            For now this just logs to console. Later we will save to DB.
-          </span>
         </div>
       </div>
     </div>
   );
 }
-/* ===================== GRN Page ===================== */
+/* ===================== GRN Page =====================*/
 function GRNPage() {
   // Mock vendors
   const vendorOptions = [
@@ -1957,7 +2731,7 @@ function GRNPage() {
     </div>
   );
 }
-/* ===================== Pos page ===================== */
+/* ===================== Pos page =====================*/
 function POSPage() {
   // Mock HSN + tax rates (same structure as PO)
   const hsnRates = [
