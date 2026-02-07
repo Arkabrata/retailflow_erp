@@ -1,55 +1,106 @@
 RetailFlow – Inventory Manager
 
-Agile Software Processes – Sprint-1 Submission
+Agile Software Processes – Course Project
+Final Submission (Sprint-1 + Sprint-2)
 
 1. Project Overview
 
-RetailFlow is a small-business Inventory Management System designed to manage:
+RetailFlow is a small-business Inventory Management System designed to manage end-to-end retail operations, including:
 
-Product catalog (Item Master)
+Product catalog (Item Master, HSN Master)
 
-Vendors
+Vendor management
 
 Purchase Orders (PO)
 
 Goods Receipt Notes (GRN)
 
-Stock inward foundation
+Inventory stock tracking
 
-The project is developed using Agile Scrum methodology across two sprints.
-2. Sprint-1 Goal
+Point of Sale (POS) sales
 
-Sprint-1 Objective (as per assignment):
+Low-stock alerts
 
-Product catalog, stock update foundation, and alert readiness.
+Management analytics dashboards
 
-Sprint-1 Focus Areas
+The project was developed using the Agile Scrum methodology across two sprints, delivering incremental and functional software at the end of each sprint.
 
-Establish core backend & frontend structure
+2. Sprint Overview
+Sprint-1 Goal (Increment-1 – MVP)
 
-Implement highest-priority user stories
+Objective:
+Establish the foundation of the system and deliver a working prototype implementing the highest-priority user stories.
 
-Deliver a working MVP
+Focus Areas:
 
-3. Sprint-1 Features Implemented (Working Software)
+Core backend and frontend setup
 
-✔ Item Master (SKU, HSN, Item Type, MRP, Cost Price)
-✔ HSN Master
-✔ Vendor Master
-✔ Purchase Order creation
-✔ PO-based Goods Receipt (GRN foundation)
-✔ Backend APIs using FastAPI
-✔ Frontend UI using React
+Master data management
 
-This version represents Increment-1 (MVP).
+Procurement flow foundation
+
+Initial working MVP
+
+Sprint-2 Goal (Final Increment)
+
+Objective:
+Deliver the complete solution with functional completeness, UI refinement, analytics, and improved Agile maturity.
+
+Focus Areas:
+
+Inventory quantity tracking and validation
+
+POS sales flow with stock deduction
+
+Low-stock alert system
+
+Analytics dashboards (Sales, Inventory, Customers)
+
+ERP/SAP-style UI polish
+
+Testing and documentation
+
+3. Features Implemented
+Sprint-1 (v1.0-sprint1)
+
+Item Master (SKU, HSN, pricing)
+
+HSN Master
+
+Vendor Master
+
+Purchase Order creation
+
+PO-based Goods Receipt (GRN foundation)
+
+Backend APIs using FastAPI
+
+Frontend UI using React
+
+Sprint-2 (v2.0-sprint2)
+
+Inventory stock tracking (inward via GRN, outward via POS)
+
+Stock validation and low-stock alerts
+
+POS sales module
+
+Analytics dashboards (Sales, Inventory, Customer insights)
+
+ERP-style UI polish (SAP/Fiori-inspired layout)
+
+Manual testing and validation
+
+Final documentation and reports
 
 4. Tech Stack
-
 Frontend
 
 React (Vite)
 
 Axios
+
+Custom ERP-style CSS
 
 Backend
 
@@ -61,7 +112,11 @@ SQLAlchemy ORM
 
 Version Control
 
-GitHub (feature-based commits)
+GitHub
+
+Branch-based development (dev, main)
+
+Tagged releases for each sprint
 
 5. How to Run the Project
 Backend
@@ -75,47 +130,65 @@ Frontend
 cd frontend
 npm install
 npm run dev
+
 6. Agile Process Evidence
 
 Product backlog created and refined
 
-Sprint backlog defined for Sprint-1
+Sprint backlogs defined for Sprint-1 and Sprint-2
 
 Incremental commits pushed to GitHub
 
-Working demo prepared for sprint review
+Tagged releases for each sprint
 
-Sprint retrospective documented separately
+Sprint review demos conducted
 
-7. Repository Structure
+Sprint retrospectives documented
+
+Comparison of planned vs delivered scope across sprints
+
+7. Testing & Quality
+
+Manual test cases executed for:
+
+GRN stock updates
+
+POS stock deduction
+
+Low-stock alerts
+
+Additional validation:
+
+Negative scenarios (insufficient stock)
+
+Working demo verified on final tagged release
+
+Test cases documented separately
+
+8. Repository Structure
 retailflow_erp/
 ├── backend/
 ├── frontend/
-├── test/
+├── docs/
+├── screenshots/
 ├── README.md
 ├── .gitignore
 └── LICENSE
 
-8. Sprint-1 Release Tag
+9. Releases
 
-v1.0-sprint1
+Sprint-1 Release: v1.0-sprint1
 
-9. Sprint-2 Planned Enhancements
-
-Stock quantity tracking
-
-Low-stock alerts
-
-Sales & inventory reports
-
-Supplier integration
-
-UI polish and testing
+Sprint-2 Final Release: v2.0-sprint2
 
 10. Team
 
-ARKABRATA CHAKRABORTY (2025CA93076)
-PREETI DHYANI (2025CA93083)
-SHUBHAM KUMAR SINGH (2025CA93034)
-SUMEET SHANBHAG (2025CA93036)
-SANTHOSH KUMAR DH (2025CA93095)
+Arkabrata Chakraborty (2025CA93076)
+
+Preeti Dhyani (2025CA93083)
+
+Shubham Kumar Singh (2025CA93034)
+
+Sumeet Shanbhag (2025CA93036)
+
+Santhosh Kumar DH (2025CA93095)
