@@ -5,6 +5,7 @@ from .routes.hsn import router as hsn_router
 from .routes.items import router as items_router
 from .routes.vendors import router as vendors_router
 from .routes.purchase_orders import router as po_router
+from .routes.grn import router as grn_router
 
 api_router = APIRouter(prefix="/api")
 
@@ -13,3 +14,4 @@ api_router.include_router(hsn_router)
 api_router.include_router(items_router)
 api_router.include_router(vendors_router)
 api_router.include_router(po_router)
+api_router.include_router(grn_router)

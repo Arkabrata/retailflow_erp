@@ -2,6 +2,8 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict
 
 
+# ===================== HSN =====================
+
 class HSNBase(BaseModel):
     hsn_code: str
     description: Optional[str] = None
@@ -18,6 +20,8 @@ class HSNOut(HSNBase):
     id: int
     model_config = ConfigDict(from_attributes=True)
 
+
+# ===================== ITEM =====================
 
 class ItemBase(BaseModel):
     sku_code: str
@@ -42,6 +46,8 @@ class ItemOut(ItemBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+# ===================== VENDOR =====================
+
 class VendorBase(BaseModel):
     vendor_code: Optional[str] = None
     vendor_name: str
@@ -65,13 +71,16 @@ class VendorOut(BaseModel):
     phone: Optional[str] = None
     tagged_skus: List[str] = []
     status: str = "Active"
+
     model_config = ConfigDict(from_attributes=True)
 
+
+# ===================== PURCHASE ORDER =====================
 
 class POLineCreate(BaseModel):
     sku_code: str
     description: Optional[str] = None
-    qty: int
+    qty: float
     rate: float
     hsn_code: Optional[str] = None
 
@@ -105,17 +114,20 @@ class PurchaseOrderCreate(BaseModel):
 class PurchaseOrderLineOut(BaseModel):
     sku_code: str
     description: Optional[str] = None
-    qty: int
+    qty: float
     rate: float
     hsn_code: Optional[str] = None
+
     cgst_rate: float
     sgst_rate: float
     igst_rate: float
+
     line_subtotal: float
     cgst_amount: float
     sgst_amount: float
     igst_amount: float
     line_total: float
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -143,4 +155,44 @@ class PurchaseOrderOut(BaseModel):
     vendor_name: Optional[str] = None
 
     lines: List[PurchaseOrderLineOut] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ===================== GRN =====================
+
+class GRNLineCreate(BaseModel):
+    sku_code: str
+    received_qty: float
+    accepted_qty: float
+    rejected_qty: float
+
+
+class GRNCreate(BaseModel):
+    grn_number: Optional[str] = None
+    po_id: int
+    received_date: str
+    remarks: Optional[str] = None
+
+    lines: List[GRNLineCreate]
+
+
+class GRNLineOut(BaseModel):
+    sku_code: str
+    received_qty: float
+    accepted_qty: float
+    rejected_qty: float
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GRNOut(BaseModel):
+    id: int
+    grn_number: str
+    po_id: int
+    received_date: str
+    remarks: Optional[str] = None
+
+    lines: List[GRNLineOut] = []
+
     model_config = ConfigDict(from_attributes=True)

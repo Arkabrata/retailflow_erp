@@ -224,6 +224,23 @@ export default function PurchaseOrderPage() {
 
   const handlePrint = () => window.print();
 
+    /* ===================== PO LIST HELPERS ===================== */
+    const getTotalQty = (po) => {
+      const linesArr = po?.lines || po?.purchase_order_lines || [];
+      return linesArr.reduce((sum, ln) => sum + (Number(ln.qty) || 0), 0);
+    };
+  
+    const getSkuWiseQty = (po) => {
+      const linesArr = po?.lines || po?.purchase_order_lines || [];
+      return linesArr.reduce((acc, ln) => {
+        const sku = ln?.sku_code;
+        if (!sku) return acc;
+        acc[sku] = (acc[sku] || 0) + (Number(ln.qty) || 0);
+        return acc;
+      }, {});
+    };
+  
+
   /* ===================== RENDER ===================== */
 
   return (
@@ -529,24 +546,47 @@ export default function PurchaseOrderPage() {
                     <th>PO</th>
                     <th>Date</th>
                     <th>Vendor</th>
-                    <th>Total</th>
+                    <th>Total Qty</th>
+                    <th>SKU-wise Qty</th>
+                    <th>Total Value</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {poList.map((po) => (
-                    <tr key={po.id || po.po_number}>
-                      <td>{po.po_number || "-"}</td>
-                      <td>{po.po_date || "-"}</td>
-                      <td>{po.vendor_name || po.vendor_id || "-"}</td>
-                      <td>{(po.total || 0).toFixed?.(2) ?? po.total ?? "-"}</td>
-                    </tr>
-                  ))}
+                  {poList.map((po) => {
+                    const totalQty = getTotalQty(po);
+                    const skuMap = getSkuWiseQty(po);
+
+                    return (
+                      <tr key={po.id}>
+                        <td>{po.po_number || "-"}</td>
+                        <td>{po.po_date || "-"}</td>
+                        <td>{po.vendor_name || po.vendor_id || "-"}</td>
+
+                        {/* TOTAL QTY */}
+                        <td style={{ fontWeight: 600 }}>{totalQty}</td>
+
+                        {/* SKU-WISE */}
+                        <td>
+                          {Object.keys(skuMap).length === 0 ? (
+                            "-"
+                          ) : (
+                            <ul style={{ margin: 0, paddingLeft: 16 }}>
+                              {Object.entries(skuMap).map(([sku, qty]) => (
+                                <li key={sku}>
+                                  {sku} : <b>{qty}</b>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </td>
+
+                        {/* TOTAL VALUE */}
+                        <td>{(po.grand_total || 0).toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
-            </div>
-
-            <div className="rf-table-footnote">
-              Printing will use the <b>.rf-po-print-area</b> if you wrap it later.
             </div>
           </div>
         )}

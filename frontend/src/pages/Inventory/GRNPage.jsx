@@ -1,66 +1,51 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import axios from "axios";
+
+const API_BASE = "http://127.0.0.1:8000/api";
 
 /* ===================== GRN Page ===================== */
 
 export default function GRNPage() {
-  // Mock vendors
-  const vendorOptions = [
-    { id: 1, name: "ABC Traders" },
-    { id: 2, name: "XYZ Fabrics" },
-  ];
+  const [poList, setPoList] = useState([]);
+  const [grnList, setGrnList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  // Mock POs with lines (later comes from Purchase Orders table)
-  const poList = [
-    {
-      id: 1,
-      number: "PO0001",
-      date: "2025-12-01",
-      vendorId: 1,
-      lines: [
-        {
-          id: 11,
-          sku: "RR-SHIRT-001",
-          description: "Slim Fit Cotton Shirt",
-          orderedQty: 100,
-        },
-        {
-          id: 12,
-          sku: "RR-TSHIRT-002",
-          description: "Graphic Tee",
-          orderedQty: 50,
-        },
-      ],
-    },
-    {
-      id: 2,
-      number: "PO0002",
-      date: "2025-12-03",
-      vendorId: 2,
-      lines: [
-        {
-          id: 21,
-          sku: "RR-TROUSER-003",
-          description: "Chino Trouser",
-          orderedQty: 60,
-        },
-      ],
-    },
-  ];
-
-  const [grnNumber] = useState("GRN0001"); // later: auto-generate
   const [grnDate, setGrnDate] = useState(
     new Date().toISOString().slice(0, 10)
   );
   const [selectedPoId, setSelectedPoId] = useState("");
   const [lines, setLines] = useState([]);
 
+  /* ===================== LOAD DATA ===================== */
+
+  const loadPOs = async () => {
+    const res = await axios.get(`${API_BASE}/purchase-orders`);
+    setPoList(res.data || []);
+  };
+
+  const loadGrns = async () => {
+    const res = await axios.get(`${API_BASE}/grn`);
+    setGrnList(res.data || []);
+  };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        await Promise.all([loadPOs(), loadGrns()]);
+      } catch (err) {
+        console.error("Failed loading GRN data", err);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
   const selectedPo = poList.find(
     (p) => String(p.id) === String(selectedPoId)
   );
 
-  const vendorForPo = selectedPo
-    ? vendorOptions.find((v) => v.id === selectedPo.vendorId)
-    : null;
+  /* ===================== PO CHANGE ===================== */
 
   const handlePoChange = (poId) => {
     setSelectedPoId(poId);
@@ -71,21 +56,21 @@ export default function GRNPage() {
       return;
     }
 
-    // Initialize GRN lines from PO lines
-    const initialLines = po.lines.map((ln) => ({
-      id: ln.id,
-      sku: ln.sku,
-      description: ln.description,
-      orderedQty: ln.orderedQty,
-      receivedQty: ln.orderedQty,
-      acceptedQty: ln.orderedQty,
-      rejectedQty: 0,
-    }));
-
-    setLines(initialLines);
+    setLines(
+      po.lines.map((ln) => ({
+        sku_code: ln.sku_code,
+        description: ln.description,
+        orderedQty: ln.qty,
+        received_qty: ln.qty,
+        accepted_qty: ln.qty,
+        rejected_qty: 0,
+      }))
+    );
   };
 
-  const updateLineField = (index, field, value) => {
+  /* ===================== LINE UPDATE ===================== */
+
+  const updateLine = (index, field, value) => {
     setLines((prev) => {
       const copy = [...prev];
       copy[index] = {
@@ -96,46 +81,83 @@ export default function GRNPage() {
     });
   };
 
+  /* ===================== TOTALS ===================== */
+
   const totals = lines.reduce(
-    (acc, ln) => {
-      acc.ordered += ln.orderedQty || 0;
-      acc.received += ln.receivedQty || 0;
-      acc.accepted += ln.acceptedQty || 0;
-      acc.rejected += ln.rejectedQty || 0;
-      return acc;
+    (a, l) => {
+      a.ordered += l.orderedQty || 0;
+      a.received += l.received_qty || 0;
+      a.accepted += l.accepted_qty || 0;
+      a.rejected += l.rejected_qty || 0;
+      return a;
     },
     { ordered: 0, received: 0, accepted: 0, rejected: 0 }
   );
 
-  const handleSaveGrn = () => {
-    console.log("GRN Saved (mock):", {
-      grnNumber,
-      grnDate,
-      poId: selectedPoId,
-      vendorId: vendorForPo?.id || null,
-      lines,
-    });
-    alert("GRN data logged to console (mock save).");
+  /* ===================== SAVE GRN ===================== */
+
+  const handleSaveGrn = async () => {
+    try {
+      setSaving(true);
+
+      const payload = {
+        grn_number: null,
+        po_id: Number(selectedPoId),
+        received_date: grnDate,
+        remarks: null,
+        lines: lines.map((ln) => ({
+          sku_code: ln.sku_code,
+          received_qty: ln.received_qty,
+          accepted_qty: ln.accepted_qty,
+          rejected_qty: ln.rejected_qty,
+        })),
+      };
+
+      await axios.post(`${API_BASE}/grn`, payload);
+      await loadGrns();
+
+      setLines([]);
+      setSelectedPoId("");
+      alert("GRN saved successfully");
+    } catch (err) {
+      console.error("GRN save failed", err.response?.data || err);
+      alert("Failed to save GRN");
+    } finally {
+      setSaving(false);
+    }
   };
+  /* ===================== GRN LIST HELPERS ===================== */
+
+  const getGrnTotalQty = (grn) => {
+    const linesArr = grn?.lines || [];
+    return linesArr.reduce(
+      (sum, ln) => sum + (Number(ln.received_qty) || 0),
+      0
+    );
+  };
+
+  const getGrnSkuWiseQty = (grn) => {
+    const linesArr = grn?.lines || [];
+    return linesArr.reduce((acc, ln) => {
+      const sku = ln?.sku_code;
+      if (!sku) return acc;
+      acc[sku] = (acc[sku] || 0) + (Number(ln.received_qty) || 0);
+      return acc;
+    }, {});
+  };
+
+  /* ===================== UI ===================== */
 
   return (
     <div className="rf-page">
       <div className="rf-page-header">
         <h2>GRN (Goods Receipt Note)</h2>
-        <p>
-          Record goods received against a Purchase Order. Capture received,
-          accepted, and rejected quantities for each SKU.
-        </p>
+        <p>Record goods received against Purchase Orders</p>
       </div>
 
+      {/* ===================== CREATE GRN ===================== */}
       <div className="rf-card">
-        {/* Header */}
         <div className="rf-grn-header-grid">
-          <div className="rf-input-group">
-            <label>GRN Number</label>
-            <input type="text" value={grnNumber} disabled />
-          </div>
-
           <div className="rf-input-group">
             <label>GRN Date</label>
             <input
@@ -146,15 +168,16 @@ export default function GRNPage() {
           </div>
 
           <div className="rf-input-group">
-            <label>PO Number</label>
+            <label>Purchase Order</label>
             <select
               value={selectedPoId}
               onChange={(e) => handlePoChange(e.target.value)}
+              disabled={loading}
             >
               <option value="">Select PO</option>
               {poList.map((po) => (
                 <option key={po.id} value={po.id}>
-                  {po.number}
+                  {po.po_number || `PO-${po.id}`}
                 </option>
               ))}
             </select>
@@ -163,15 +186,14 @@ export default function GRNPage() {
           <div className="rf-input-group">
             <label>Vendor</label>
             <input
-              type="text"
-              value={vendorForPo?.name || ""}
+              value={selectedPo?.vendor_name || ""}
               disabled
               placeholder="Auto from PO"
             />
           </div>
         </div>
 
-        {/* Lines */}
+        {/* ===================== LINES ===================== */}
         <div className="rf-table-wrapper">
           <table className="rf-table rf-table-grn">
             <thead>
@@ -187,43 +209,43 @@ export default function GRNPage() {
             <tbody>
               {lines.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: "center", color: "#6b7280" }}>
-                    Select a PO to load items.
+                  <td colSpan={6} style={{ textAlign: "center" }}>
+                    Select a PO to load items
                   </td>
                 </tr>
               ) : (
-                lines.map((ln, idx) => (
-                  <tr key={ln.id}>
-                    <td>{ln.sku}</td>
+                lines.map((ln, i) => (
+                  <tr key={i}>
+                    <td>{ln.sku_code}</td>
                     <td>{ln.description}</td>
                     <td>{ln.orderedQty}</td>
                     <td>
                       <input
-                        type="number"
                         className="rf-cell-input"
-                        value={ln.receivedQty}
+                        type="number"
+                        value={ln.received_qty}
                         onChange={(e) =>
-                          updateLineField(idx, "receivedQty", e.target.value)
+                          updateLine(i, "received_qty", e.target.value)
                         }
                       />
                     </td>
                     <td>
                       <input
-                        type="number"
                         className="rf-cell-input"
-                        value={ln.acceptedQty}
+                        type="number"
+                        value={ln.accepted_qty}
                         onChange={(e) =>
-                          updateLineField(idx, "acceptedQty", e.target.value)
+                          updateLine(i, "accepted_qty", e.target.value)
                         }
                       />
                     </td>
                     <td>
                       <input
-                        type="number"
                         className="rf-cell-input"
-                        value={ln.rejectedQty}
+                        type="number"
+                        value={ln.rejected_qty}
                         onChange={(e) =>
-                          updateLineField(idx, "rejectedQty", e.target.value)
+                          updateLine(i, "rejected_qty", e.target.value)
                         }
                       />
                     </td>
@@ -234,7 +256,6 @@ export default function GRNPage() {
           </table>
         </div>
 
-        {/* Totals */}
         <div className="rf-grn-summary">
           <div>Ordered: {totals.ordered}</div>
           <div>Received: {totals.received}</div>
@@ -245,12 +266,72 @@ export default function GRNPage() {
         <div className="rf-form-actions">
           <button
             className="rf-primary-btn"
+            disabled={!selectedPoId || saving}
             onClick={handleSaveGrn}
-            disabled={!selectedPoId}
           >
-            Save GRN (Mock)
+            {saving ? "Saving..." : "Save GRN"}
           </button>
         </div>
+      </div>
+      
+
+
+      {/* ===================== GRN LIST ===================== */}
+      <div className="rf-card" style={{ marginTop: 24 }}>
+        <h3>Saved GRNs</h3>
+
+        <table className="rf-table">
+          <thead>
+            <tr>
+              <th>GRN No</th>
+              <th>PO ID</th>
+              <th>Date</th>
+              <th>Total Qty</th>
+              <th>SKU-wise Qty</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {grnList.length === 0 ? (
+              <tr>
+                <td colSpan={5} style={{ textAlign: "center" }}>
+                  No GRNs yet
+                </td>
+              </tr>
+            ) : (
+              grnList.map((g) => {
+                const totalQty = getGrnTotalQty(g);
+                const skuMap = getGrnSkuWiseQty(g);
+
+                return (
+                  <tr key={g.id}>
+                    <td>{g.grn_number}</td>
+                    <td>{g.po_id}</td>
+                    <td>{g.received_date}</td>
+
+                    {/* TOTAL RECEIVED QTY */}
+                    <td style={{ fontWeight: 600 }}>{totalQty}</td>
+
+                    {/* SKU-WISE RECEIVED QTY */}
+                    <td>
+                      {Object.keys(skuMap).length === 0 ? (
+                        "-"
+                      ) : (
+                        <ul style={{ margin: 0, paddingLeft: 16 }}>
+                          {Object.entries(skuMap).map(([sku, qty]) => (
+                            <li key={sku}>
+                              {sku} : <b>{qty}</b>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
