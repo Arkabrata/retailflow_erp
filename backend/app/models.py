@@ -37,6 +37,9 @@ class ItemMaster(Base):
     status = Column(String, default="DRAFT")
     image_path = Column(String, nullable=True)
 
+    # ✅ Sprint-1: Low stock threshold
+    min_stock_level = Column(Integer, default=10)
+
 
 # ===================== VENDOR =====================
 
@@ -144,3 +147,11 @@ class GRNLine(Base):
     rejected_qty = Column(Float, default=0.0)
 
     grn = relationship("GRN", back_populates="lines")
+
+# ===================== INVENTORY STOCK =====================
+
+class InventoryStock(Base):
+    __tablename__ = "inventory_stock"
+
+    sku_code = Column(String, primary_key=True, index=True)
+    available_qty = Column(Float, default=0.0)

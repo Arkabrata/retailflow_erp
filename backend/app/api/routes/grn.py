@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ...db import get_db
-from ...models import GRN, GRNLine, PurchaseOrder
+from ...models import GRN, GRNLine, PurchaseOrder, InventoryStock
 from ...schemas import GRNCreate, GRNOut
 
 router = APIRouter(prefix="/grn", tags=["GRN"])
@@ -30,6 +30,9 @@ def create_grn(payload: GRNCreate, db: Session = Depends(get_db)):
         remarks=payload.remarks,
     )
 
+    # Track accepted qty per SKU for stock update
+    accepted_by_sku: dict[str, float] = {}
+
     for ln in payload.lines:
         if ln.received_qty <= 0:
             continue
@@ -43,9 +46,39 @@ def create_grn(payload: GRNCreate, db: Session = Depends(get_db)):
             )
         )
 
+        if ln.accepted_qty and ln.accepted_qty > 0:
+            accepted_by_sku[ln.sku_code] = (
+                accepted_by_sku.get(ln.sku_code, 0) + ln.accepted_qty
+            )
+
+    if not grn.lines:
+        raise HTTPException(status_code=400, detail="No valid GRN lines")
+
     db.add(grn)
     db.commit()
     db.refresh(grn)
+
+    # ===================== STOCK UPDATE =====================
+    for sku, qty in accepted_by_sku.items():
+        stock = (
+            db.query(InventoryStock)
+            .filter(InventoryStock.sku_code == sku)
+            .first()
+        )
+
+        if stock:
+            stock.available_qty += qty
+        else:
+            db.add(
+                InventoryStock(
+                    sku_code=sku,
+                    available_qty=qty,
+                )
+            )
+
+    db.commit()
+    # ========================================================
+
     return grn
 
 
