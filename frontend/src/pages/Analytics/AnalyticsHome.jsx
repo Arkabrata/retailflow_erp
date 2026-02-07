@@ -188,7 +188,7 @@ function BarChart({
               y1={g.y}
               x2={width - pad.r}
               y2={g.y}
-              stroke="rgba(0,0,0,0.08)"
+              stroke="rgba(0, 0, 0, 0.08)"
             />
             <text
               x={8}
@@ -215,7 +215,7 @@ function BarChart({
                 width={w}
                 height={h}
                 rx={10}
-                fill="rgba(0,0,0,0.86)"
+                fill="hsla(197, 91.90%, 48.40%, 0.86)"
               />
               <text
                 x={x + w / 2}
@@ -523,7 +523,7 @@ export default function AnalyticsHome() {
   const yMaxSales = 60 * 100000; // 60L
 
   return (
-    <div style={{ padding: 18, background: "rgba(0,0,0,0.015)", minHeight: "calc(100vh - 60px)" }}>
+    <div style={{ padding: 18, background: "rgb(255, 255, 255)", minHeight: "calc(100vh - 60px)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 22 }}>Analytics</h2>
