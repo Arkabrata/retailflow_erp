@@ -1,41 +1,17 @@
-// src/pages/POS/POSPage.jsx
-import { useMemo, useState } from "react";
+// frontend/src/pages/POS/POSPage.jsx
+import { useEffect, useMemo, useState } from "react";
+import axios from "axios";
+
+const API_BASE = "http://127.0.0.1:8000/api";
 
 export default function POSPage() {
-  // Mock HSN + tax rates (same structure as PO)
-  const hsnRates = [
-    {
-      code: "6105",
-      description: "Men's cotton shirts",
-      cgst: 2.5,
-      sgst: 2.5,
-      igst: 5.0,
-    },
-    {
-      code: "6109",
-      description: "T-shirts, singlets and vests",
-      cgst: 2.5,
-      sgst: 2.5,
-      igst: 5.0,
-    },
-    {
-      code: "6203",
-      description: "Men's suits, jackets, trousers",
-      cgst: 6.0,
-      sgst: 6.0,
-      igst: 12.0,
-    },
-  ];
-
-  // Mock items (in real system, these will come from Item Master where status = Published)
-  const itemOptions = [
-    { id: 1, sku: "RR-SHIRT-001", name: "Slim Fit Cotton Shirt", hsnCode: "6105", rate: 1999 },
-    { id: 2, sku: "RR-TSHIRT-002", name: "Graphic Tee", hsnCode: "6109", rate: 999 },
-    { id: 3, sku: "RR-TROUSER-003", name: "Chino Trouser", hsnCode: "6203", rate: 2499 },
-  ];
+  const [hsnRates, setHsnRates] = useState([]); // from backend
+  const [itemOptions, setItemOptions] = useState([]); // from backend
 
   const [billNumber, setBillNumber] = useState("BILL-0001");
-  const [billDate, setBillDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [billDate, setBillDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  );
 
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
@@ -51,8 +27,89 @@ export default function POSPage() {
   });
 
   const [lines, setLines] = useState([makeEmptyLine()]);
-  const [invoices, setInvoices] = useState([]);
+  const [invoices, setInvoices] = useState([]); // from backend
   const [msg, setMsg] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  /* ===================== LOAD MASTER + SALES ===================== */
+
+  const loadHSN = async () => {
+    const res = await axios.get(`${API_BASE}/hsn`);
+    const data = res.data || [];
+    // Map backend fields => ui fields
+    setHsnRates(
+      data.map((h) => ({
+        code: h.hsn_code,
+        description: h.description,
+        cgst: Number(h.cgst_rate || 0),
+        sgst: Number(h.sgst_rate || 0),
+        igst: Number(h.igst_rate || 0),
+      }))
+    );
+  };
+
+  const loadItems = async () => {
+    const res = await axios.get(`${API_BASE}/items`);
+    const data = res.data || [];
+    // Map backend fields => ui fields
+    // (No assumption about Published-only; we show all. You can filter if needed.)
+    setItemOptions(
+      data.map((it) => ({
+        id: it.id,
+        sku: it.sku_code,
+        name:
+          it.style ||
+          `${it.brand || ""} ${it.category || ""}`.trim() ||
+          it.sku_code,
+        hsnCode: it.hsn_code || "",
+        rate: 0, // you don’t store selling MRP now; keep editable
+        status: it.status,
+      }))
+    );
+  };
+
+  const loadSales = async () => {
+    const res = await axios.get(`${API_BASE}/sales`);
+    const data = res.data || [];
+    setInvoices(
+      data.map((s) => ({
+        id: s.id,
+        billNumber: s.bill_number,
+        billDate: s.sale_date,
+        customerName: s.customer_name || "Walk-in",
+        customerEmail: s.customer_email || "",
+        customerPhone: s.customer_phone || "",
+        subtotal: Number(s.subtotal || 0),
+        tax: Number(s.tax_total || 0),
+        grandTotal: Number(s.grand_total || 0),
+        lineCount: (s.lines || []).length,
+      }))
+    );
+
+    // Keep Bill No UX: set next bill based on last saved
+    if (data.length > 0) {
+      const last = data[0]?.bill_number;
+      if (last) setBillNumber(getNextBillNumber(last));
+    }
+  };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setLoading(true);
+        await Promise.all([loadHSN(), loadItems(), loadSales()]);
+      } catch (e) {
+        console.error("POS load failed", e);
+        setMsg("Failed to load POS masters/sales.");
+      } finally {
+        setLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ===================== TAX / TOTALS ===================== */
 
   const getHsnRates = (hsnCode) => {
     const h = hsnRates.find((x) => x.code === hsnCode);
@@ -72,7 +129,7 @@ export default function POSPage() {
     const tax = cgstAmt + sgstAmt + igstAmt;
     const total = base + tax;
 
-    return { base, tax, total };
+    return { base, tax, total, cgstAmt, sgstAmt, igstAmt, cgst, sgst, igst };
   };
 
   const totals = useMemo(() => {
@@ -87,7 +144,9 @@ export default function POSPage() {
       { subtotal: 0, tax: 0, grandTotal: 0 }
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lines]);
+  }, [lines, hsnRates]);
+
+  /* ===================== LINES ===================== */
 
   const addLine = () => {
     setLines((prev) => [...prev, makeEmptyLine()]);
@@ -95,7 +154,9 @@ export default function POSPage() {
   };
 
   const removeLine = (lineId) => {
-    setLines((prev) => (prev.length <= 1 ? prev : prev.filter((l) => l.id !== lineId)));
+    setLines((prev) =>
+      prev.length <= 1 ? prev : prev.filter((l) => l.id !== lineId)
+    );
     setMsg("");
   };
 
@@ -126,42 +187,78 @@ export default function POSPage() {
     setMsg("");
   };
 
+  /* ===================== BILL NUMBER ===================== */
+
   const getNextBillNumber = (current) => {
-    const match = current.match(/(\d+)$/);
-    if (!match) return current;
+    const match = String(current).match(/(\d+)$/);
+    if (!match) return "BILL-0001";
     const num = parseInt(match[1], 10) + 1;
     return `BILL-${String(num).padStart(4, "0")}`;
   };
 
-  const handleNewBill = () => {
-    const validLines = lines.filter((l) => l.sku && (Number(l.qty) || 0) > 0);
+  /* ===================== SAVE BILL (POST /sales) ===================== */
+
+  const handleNewBill = async () => {
+    const validLines = lines.filter(
+      (l) => l.sku && (Number(l.qty) || 0) > 0
+    );
     if (!validLines.length || totals.grandTotal <= 0) {
       setMsg("Add at least 1 SKU to create a bill.");
       return;
     }
 
-    const invoice = {
-      id: Date.now(),
-      billNumber,
-      billDate,
-      customerName: customerName || "Walk-in",
-      customerEmail,
-      customerPhone,
-      subtotal: totals.subtotal,
-      tax: totals.tax,
-      grandTotal: totals.grandTotal,
-      lineCount: validLines.length,
-    };
+    try {
+      setSaving(true);
+      setMsg("");
 
-    setInvoices((prev) => [invoice, ...prev]);
+      const payload = {
+        bill_number: billNumber, // backend keeps unique; you can also send null
+        sale_date: billDate,
+        customer_name: customerName || "Walk-in",
+        customer_email: customerEmail || null,
+        customer_phone: customerPhone || null,
+        subtotal: totals.subtotal,
+        tax_total: totals.tax,
+        grand_total: totals.grandTotal,
+        lines: validLines.map((l) => {
+          const c = computeLine(l);
+          return {
+            sku_code: l.sku,
+            description: l.description,
+            hsn_code: l.hsnCode || null,
+            qty: Number(l.qty) || 0,
+            rate: Number(l.rate) || 0,
+            cgst_rate: Number(c.cgst || 0),
+            sgst_rate: Number(c.sgst || 0),
+            igst_rate: Number(c.igst || 0),
+            line_subtotal: Number(c.base || 0),
+            line_tax: Number(c.tax || 0),
+            line_total: Number(c.total || 0),
+          };
+        }),
+      };
 
-    // Reset for next bill
-    setBillNumber((prev) => getNextBillNumber(prev));
-    setCustomerName("");
-    setCustomerEmail("");
-    setCustomerPhone("");
-    setLines([makeEmptyLine()]);
-    setMsg("Bill saved (session). Ready for next bill.");
+      await axios.post(`${API_BASE}/sales`, payload);
+
+      // Refresh bills from backend
+      await loadSales();
+
+      // Reset for next bill
+      setBillNumber((prev) => getNextBillNumber(prev));
+      setCustomerName("");
+      setCustomerEmail("");
+      setCustomerPhone("");
+      setLines([makeEmptyLine()]);
+      setMsg("Bill saved. Inventory updated.");
+    } catch (err) {
+      console.error("Sale save failed", err.response?.data || err);
+      const detail =
+        err.response?.data?.detail ||
+        "Failed to save bill (check stock / server).";
+      setMsg(String(detail));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -181,13 +278,23 @@ export default function POSPage() {
             </div>
             <div className="rf-input-group">
               <label>Date</label>
-              <input type="date" value={billDate} onChange={(e) => setBillDate(e.target.value)} />
+              <input
+                type="date"
+                value={billDate}
+                onChange={(e) => setBillDate(e.target.value)}
+                disabled={loading}
+              />
             </div>
           </div>
 
           <div className="rf-table-header" style={{ marginTop: 12 }}>
             <h3>Cart Items</h3>
-            <button type="button" className="rf-primary-btn" onClick={addLine}>
+            <button
+              type="button"
+              className="rf-primary-btn"
+              onClick={addLine}
+              disabled={loading}
+            >
               + Add Item
             </button>
           </div>
@@ -214,7 +321,10 @@ export default function POSPage() {
                         <select
                           className="rf-cell-select"
                           value={line.sku}
-                          onChange={(e) => handleSkuChange(index, e.target.value)}
+                          onChange={(e) =>
+                            handleSkuChange(index, e.target.value)
+                          }
+                          disabled={loading}
                         >
                           <option value="">Select SKU</option>
                           {itemOptions.map((it) => (
@@ -225,7 +335,9 @@ export default function POSPage() {
                         </select>
                       </td>
 
-                      <td style={{ color: "#111827" }}>{line.description || "-"}</td>
+                      <td style={{ color: "#111827" }}>
+                        {line.description || "-"}
+                      </td>
 
                       <td>
                         <input
@@ -233,7 +345,10 @@ export default function POSPage() {
                           className="rf-cell-input rf-pos-number-input"
                           value={line.qty}
                           min="1"
-                          onChange={(e) => updateLineField(index, "qty", e.target.value)}
+                          onChange={(e) =>
+                            updateLineField(index, "qty", e.target.value)
+                          }
+                          disabled={loading}
                         />
                       </td>
 
@@ -243,18 +358,23 @@ export default function POSPage() {
                           className="rf-cell-input rf-pos-number-input"
                           value={line.rate}
                           min="0"
-                          onChange={(e) => updateLineField(index, "rate", e.target.value)}
+                          onChange={(e) =>
+                            updateLineField(index, "rate", e.target.value)
+                          }
+                          disabled={loading}
                         />
                       </td>
 
-                      <td style={{ textAlign: "right" }}>{total.toFixed(2)}</td>
+                      <td style={{ textAlign: "right" }}>
+                        {total.toFixed(2)}
+                      </td>
 
                       <td>
                         <button
                           type="button"
                           className="rf-text-button"
                           onClick={() => removeLine(line.id)}
-                          disabled={lines.length <= 1}
+                          disabled={lines.length <= 1 || loading}
                         >
                           Remove
                         </button>
@@ -267,7 +387,18 @@ export default function POSPage() {
           </div>
 
           {msg && (
-            <p style={{ marginTop: 10, fontSize: 12, color: "#16a34a" }}>
+            <p
+              style={{
+                marginTop: 10,
+                fontSize: 12,
+                color:
+                  String(msg).toLowerCase().includes("failed") ||
+                  String(msg).toLowerCase().includes("insufficient") ||
+                  String(msg).toLowerCase().includes("no stock")
+                    ? "#dc2626"
+                    : "#16a34a",
+              }}
+            >
               {msg}
             </p>
           )}
@@ -285,6 +416,7 @@ export default function POSPage() {
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
                 placeholder="Walk-in"
+                disabled={loading}
               />
             </div>
 
@@ -295,6 +427,7 @@ export default function POSPage() {
                 value={customerEmail}
                 onChange={(e) => setCustomerEmail(e.target.value)}
                 placeholder="customer@email.com"
+                disabled={loading}
               />
             </div>
 
@@ -305,6 +438,7 @@ export default function POSPage() {
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
                 placeholder="10-digit mobile"
+                disabled={loading}
               />
             </div>
           </div>
@@ -325,12 +459,18 @@ export default function POSPage() {
               <span>₹ {totals.grandTotal.toFixed(2)}</span>
             </div>
 
-            <button type="button" className="rf-primary-btn" style={{ marginTop: 10, width: "100%" }} onClick={handleNewBill}>
-              New Bill
+            <button
+              type="button"
+              className="rf-primary-btn"
+              style={{ marginTop: 10, width: "100%" }}
+              onClick={handleNewBill}
+              disabled={loading || saving}
+            >
+              {saving ? "Saving..." : "New Bill"}
             </button>
 
             <p className="rf-table-footnote" style={{ marginTop: 8 }}>
-              Saves in-session only (for now).
+              Saves to DB + deducts inventory.
             </p>
           </div>
         </div>
@@ -339,7 +479,7 @@ export default function POSPage() {
       {/* Saved invoices */}
       <div className="rf-card" style={{ marginTop: 18 }}>
         <div className="rf-table-header">
-          <h3>Saved Bills (Current Session)</h3>
+          <h3>Saved Bills</h3>
           <div style={{ fontSize: 12, color: "#6b7280" }}>
             {invoices.length} bills
           </div>
@@ -371,7 +511,9 @@ export default function POSPage() {
                     <td>{inv.billDate}</td>
                     <td>{inv.customerName}</td>
                     <td>{inv.customerPhone || "-"}</td>
-                    <td style={{ textAlign: "right" }}>₹ {inv.grandTotal.toFixed(2)}</td>
+                    <td style={{ textAlign: "right" }}>
+                      ₹ {inv.grandTotal.toFixed(2)}
+                    </td>
                     <td style={{ textAlign: "right" }}>{inv.lineCount}</td>
                   </tr>
                 ))

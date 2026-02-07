@@ -148,6 +148,7 @@ class GRNLine(Base):
 
     grn = relationship("GRN", back_populates="lines")
 
+
 # ===================== INVENTORY STOCK =====================
 
 class InventoryStock(Base):
@@ -155,3 +156,51 @@ class InventoryStock(Base):
 
     sku_code = Column(String, primary_key=True, index=True)
     available_qty = Column(Float, default=0.0)
+
+
+# ===================== SALES =====================
+
+class Sale(Base):
+    __tablename__ = "sales"
+
+    id = Column(Integer, primary_key=True, index=True)
+    bill_number = Column(String, unique=True, index=True, nullable=False)
+    sale_date = Column(String, nullable=False)
+
+    customer_name = Column(String, nullable=True)
+    customer_email = Column(String, nullable=True)
+    customer_phone = Column(String, nullable=True)
+
+    subtotal = Column(Float, default=0.0)
+    tax_total = Column(Float, default=0.0)
+    grand_total = Column(Float, default=0.0)
+
+    lines = relationship(
+        "SaleLine",
+        back_populates="sale",
+        cascade="all, delete-orphan",
+    )
+
+
+class SaleLine(Base):
+    __tablename__ = "sale_lines"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sale_id = Column(Integer, ForeignKey("sales.id"), nullable=False)
+
+    sku_code = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    hsn_code = Column(String, nullable=True)
+
+    qty = Column(Float, default=0.0)
+    rate = Column(Float, default=0.0)
+
+    cgst_rate = Column(Float, default=0.0)
+    sgst_rate = Column(Float, default=0.0)
+    igst_rate = Column(Float, default=0.0)
+
+    line_subtotal = Column(Float, default=0.0)
+    line_tax = Column(Float, default=0.0)
+    line_total = Column(Float, default=0.0)
+
+    sale = relationship("Sale", back_populates="lines")

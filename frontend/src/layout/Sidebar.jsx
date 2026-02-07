@@ -10,6 +10,14 @@ export default function Sidebar({ collapsed, active, onNavigate }) {
           POS
         </button>
 
+        {/* ✅ INVENTORY OVERVIEW */}
+        <button
+          className={item("inventory")}
+          onClick={() => onNavigate("inventory")}
+        >
+          Inventory
+        </button>
+
         <button
           className={item("itemMaster")}
           onClick={() => onNavigate("itemMaster")}

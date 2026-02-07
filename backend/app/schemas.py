@@ -196,3 +196,74 @@ class GRNOut(BaseModel):
     lines: List[GRNLineOut] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ===================== SALES =====================
+
+class SaleLineCreate(BaseModel):
+    sku_code: str
+    description: Optional[str] = None
+    hsn_code: Optional[str] = None
+
+    qty: float
+    rate: float
+
+    cgst_rate: float = 0.0
+    sgst_rate: float = 0.0
+    igst_rate: float = 0.0
+
+    line_subtotal: float = 0.0
+    line_tax: float = 0.0
+    line_total: float = 0.0
+
+
+class SaleCreate(BaseModel):
+    bill_number: Optional[str] = None
+    sale_date: str
+
+    customer_name: Optional[str] = None
+    customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
+
+    subtotal: float = 0.0
+    tax_total: float = 0.0
+    grand_total: float = 0.0
+
+    lines: List[SaleLineCreate]
+
+
+class SaleLineOut(BaseModel):
+    sku_code: str
+    description: Optional[str] = None
+    hsn_code: Optional[str] = None
+
+    qty: float
+    rate: float
+
+    cgst_rate: float
+    sgst_rate: float
+    igst_rate: float
+
+    line_subtotal: float
+    line_tax: float
+    line_total: float
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SaleOut(BaseModel):
+    id: int
+    bill_number: str
+    sale_date: str
+
+    customer_name: Optional[str] = None
+    customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
+
+    subtotal: float
+    tax_total: float
+    grand_total: float
+
+    lines: List[SaleLineOut] = []
+
+    model_config = ConfigDict(from_attributes=True)

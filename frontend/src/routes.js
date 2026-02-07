@@ -1,18 +1,4 @@
-export const ROUTES = {
-    pos: "/pos",
-  
-    itemMaster: "/inventory/item-master",
-    hsnMaster: "/inventory/hsn-master",
-    vendorMaster: "/inventory/vendor-master",
-    purchaseOrders: "/inventory/purchase-orders",
-    grn: "/inventory/grn",
-  
-    retailerProfile: "/settings/retailer-profile",
-    users: "/settings/users",
-  
-    analytics: "/analytics",
-  };
-  
-  export const PATH_TO_SECTION = Object.fromEntries(
-    Object.entries(ROUTES).map(([k, v]) => [v, k])
-  );
+// frontend/src/routes.js
+// Not used: Navigation is controlled by Sidebar + activeSection in App.jsx.
+// Kept as placeholder for future react-router migration.
+export const ROUTES = {};

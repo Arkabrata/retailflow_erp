@@ -8,6 +8,7 @@ import LoginScreen from "./screens/LoginScreen";
 
 // Pages
 import POSPage from "./pages/POS/POSPage";
+import InventoryPage from "./pages/Inventory/InventoryPage";
 import ItemMasterPage from "./pages/Inventory/ItemMasterPage";
 import HSNMasterPage from "./pages/Inventory/HSNMasterPage";
 import VendorMasterPage from "./pages/Inventory/VendorMasterPage";
@@ -43,6 +44,7 @@ export default function App() {
 
         <main className="rf-content">
           {activeSection === "pos" && <POSPage />}
+          {activeSection === "inventory" && <InventoryPage />}
           {activeSection === "itemMaster" && <ItemMasterPage />}
           {activeSection === "hsnMaster" && <HSNMasterPage />}
           {activeSection === "vendorMaster" && <VendorMasterPage />}
